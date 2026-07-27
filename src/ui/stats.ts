@@ -6,7 +6,24 @@
  * 60 times a second.
  */
 
-import type { WorldSnapshot } from '../sim/simulation';
+/**
+ * The subset of a snapshot the readouts need, which both the flat and the 3D
+ * simulations satisfy — their snapshots differ only in how poses are shaped.
+ */
+export interface StatsCar {
+  alive: boolean;
+  isElite: boolean;
+  health01: number;
+  maxX: number;
+}
+
+export interface StatsView {
+  generation: number;
+  aliveCount: number;
+  bestX: number;
+  leaderIndex: number;
+  cars: StatsCar[];
+}
 
 export class HealthStrip {
   private canvas: HTMLCanvasElement;
@@ -34,7 +51,7 @@ export class HealthStrip {
     canvas.style.cursor = 'pointer';
   }
 
-  draw(snapshot: WorldSnapshot | null): void {
+  draw(snapshot: StatsView | null): void {
     if (!snapshot) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = this.canvas.getBoundingClientRect();

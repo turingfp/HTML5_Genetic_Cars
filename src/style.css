@@ -179,7 +179,8 @@ h2 {
 
 /* ── Stage ──────────────────────────────────────────────────────────────── */
 
-#view {
+#view,
+#view3d {
   display: block;
   width: 100%;
   height: clamp(320px, 52vh, 620px);
@@ -188,6 +189,20 @@ h2 {
   background: #0b1120;
   box-shadow: var(--shadow);
   touch-action: none;
+}
+
+#view[hidden],
+#view3d[hidden] {
+  display: none;
+}
+
+.mode-switch {
+  flex: 0 0 auto;
+}
+
+.mode-switch button {
+  min-width: 44px;
+  font-weight: 600;
 }
 
 .hud {

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { TILE_WIDTH, TRACK_START_X, TRACK_START_Y, TRACK_TILE_COUNT } from '../src/config';
+import {
+  MAX_TILE_TILT,
+  TILE_WIDTH,
+  TRACK_START_X,
+  TRACK_START_Y,
+  TRACK_TILE_COUNT,
+} from '../src/config';
 import { generateTrack, surfaceIndexAt } from '../src/sim/track';
 
 describe('generateTrack', () => {
@@ -39,6 +45,25 @@ describe('generateTrack', () => {
     const early = Array.from({ length: 20 }, (_, i) => slopeAt(i)).reduce((a, b) => a + b) / 20;
     const late = Array.from({ length: 20 }, (_, i) => slopeAt(179 + i)).reduce((a, b) => a + b) / 20;
     expect(early).toBeLessThan(late);
+  });
+
+  it('always advances in x, so the surface stays a function of x', () => {
+    // Unclamped, the tilt formula reaches 2.25 rad and tips tiles past vertical,
+    // which folds the track back over itself and breaks every lookup by x.
+    for (const seed of ['1ckq', 'fold', 'alpha', 'zzz', 'steep-9', 'q7', 'showcase']) {
+      const track = generateTrack(seed);
+      for (let i = 1; i < track.surface.length; i++) {
+        expect(track.surface[i]!.x).toBeGreaterThan(track.surface[i - 1]!.x);
+      }
+    }
+  });
+
+  it('keeps tilt within the clamp even on the last tiles', () => {
+    const track = generateTrack('extreme');
+    for (const tile of track.tiles) {
+      const [a, b] = tile.vertices;
+      expect(Math.abs(Math.atan2(b.y - a.y, b.x - a.x))).toBeLessThanOrEqual(MAX_TILE_TILT + 1e-9);
+    }
   });
 
   it('reports bounds that contain every tile', () => {

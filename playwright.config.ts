@@ -17,7 +17,9 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
-          args: ['--no-sandbox'],
+          // SwiftShader gives the 3D mode a software WebGL context on headless
+          // machines that have no GPU.
+          args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
           // Use a preinstalled Chromium when one is provided; this container
           // ships its own build that Playwright would otherwise re-download.
           ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),

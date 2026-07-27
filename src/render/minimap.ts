@@ -7,8 +7,15 @@
  * rate.
  */
 
-import type { WorldSnapshot } from '../sim/simulation';
 import type { TrackDef } from '../sim/track';
+
+/** One car's position along the track, independent of how it is simulated. */
+export interface MinimapMarker {
+  x: number;
+  alive: boolean;
+  isElite: boolean;
+  isLeader: boolean;
+}
 
 export class Minimap {
   private canvas: HTMLCanvasElement;
@@ -65,7 +72,12 @@ export class Minimap {
     this.profileSeed = track.seed;
   }
 
-  draw(track: TrackDef, snapshot: WorldSnapshot | null, cameraX: number): void {
+  draw(
+    track: TrackDef,
+    markers: MinimapMarker[] | null,
+    cameraX: number,
+    exploredX = 0,
+  ): void {
     this.resize();
     if (!this.profile || this.profileSeed !== track.seed) this.buildProfile(track);
 
@@ -80,7 +92,7 @@ export class Minimap {
     ctx.fillStyle = '#0b1120';
     ctx.fillRect(0, 0, width, height);
 
-    if (snapshot) this.exploredX = Math.max(this.exploredX, snapshot.bestX);
+    this.exploredX = Math.max(this.exploredX, exploredX);
 
     // Unexplored track stays dim; the part cars have reached lights up.
     ctx.fillStyle = 'rgba(51, 65, 85, 0.5)';
@@ -94,14 +106,11 @@ export class Minimap {
     ctx.fill(this.profile!);
     ctx.restore();
 
-    if (snapshot) {
-      for (let i = 0; i < snapshot.cars.length; i++) {
-        const car = snapshot.cars[i]!;
-        if (!car.alive) continue;
-        const x = toX(car.chassis.x);
-        ctx.fillStyle =
-          i === snapshot.leaderIndex ? '#fde047' : car.isElite ? '#93c5fd' : '#fca5a5';
-        ctx.fillRect(x - 1, 0, 2.5, height);
+    if (markers) {
+      for (const marker of markers) {
+        if (!marker.alive) continue;
+        ctx.fillStyle = marker.isLeader ? '#fde047' : marker.isElite ? '#93c5fd' : '#fca5a5';
+        ctx.fillRect(toX(marker.x) - 1, 0, 2.5, height);
       }
     }
 

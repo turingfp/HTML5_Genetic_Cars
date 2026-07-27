@@ -48,7 +48,9 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: check
+    # Both suites must pass: a regression that only the browser tests catch
+    # must not reach the published site.
+    needs: [check, e2e]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:

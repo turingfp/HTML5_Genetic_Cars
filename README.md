@@ -16,6 +16,28 @@ Terrain gets steeper the further you go, and is built from a track seed — the
 same seed always generates the same course, so runs can be compared and shared
 via the URL.
 
+## 3D mode
+
+![Four-wheeled cars evolving on a banked road](docs/screenshot-3d.png)
+
+Switch to 3D and the same evolution runs on
+[Box3D](https://github.com/erincatto/box3d) — Erin Catto's 3D engine, the
+descendant of the Box2D the original was built on — via
+[box3d-wasm](https://github.com/monteslu/box3d-wasm).
+
+A 3D car is the same silhouette given a width: the chassis outline is extruded
+into a convex hull and each wheel becomes a pair, so a 2D genome is still a
+valid car. That adds two genes — how wide the body is, and how far the wheels
+sit outboard — and one new way to fail. The road banks from side to side, more
+so the further along it goes, and a car that rolls off the edge is finished
+where a 2D car would simply have kept grinding forward. Narrow and tall wins
+the early flat ground; something wider usually has to evolve to survive the
+camber.
+
+Both modes share the seed, the population controls and the genetic algorithm
+itself, so you can watch the same course punish different shapes. Box3D and
+three.js are only downloaded when you first switch to 3D.
+
 ## Running it
 
 ```sh
@@ -42,14 +64,20 @@ The physics engine is kept behind a boundary: the simulation fills a plain
 nothing outside `src/sim/` refers to the engine, and the genetic algorithm is
 pure functions over plain data that can be tested without a browser.
 
+Evolution itself is generic over the genome: `ga/evolution.ts` takes a
+`GenomeOps` describing how to create, breed and mutate one kind of car, so both
+modes share a single implementation of selection, crossover and elitism.
+
 ```
 src/
   config.ts        every tunable constant, with the real ranges documented
   core/rng.ts      seedable generator (no global Math.random patching)
-  ga/              genome and evolution — pure, engine independent
-  sim/             terrain generation, car construction, the world and its rules
+  ga/              genomes and evolution — pure, engine independent
+  sim/             2D terrain, car construction, the world and its rules
+  sim3d/           the same on Box3D, with a banked road and four wheels
   replay/          compact pose recording and the ghost of the best run
   render/          camera, main view, minimap, fitness chart
+  render3d/        the three.js scene
   ui/              controls, readouts, hall of fame, persistence
   app/             the fixed-timestep loop and the wiring between all of it
 ```
@@ -84,8 +112,11 @@ Bugs fixed along the way: leader tracking aliased a live physics vector (and the
 function meant to recompute it never updated its own accumulator); a cached
 "last drawn tile" index was never reset, so the ground vanished at the start of
 each generation; the fitness graph plotted raw scores as pixel coordinates and
-went off-canvas above 200; mutation could seat both wheels on the same chassis
-vertex, producing cars that could not drive.
+went off-canvas above 200; mutation and crossover could both seat both wheels on
+the same chassis vertex, producing cars that could not drive; and the tilt
+formula reached 129 degrees on late tiles, folding the track back over itself so
+that the surface was no longer a function of x — tilt is now clamped just under
+a quarter turn.
 
 Two behavioural notes: the physics feel is close but not identical, since the
 solver differs; and track seeds are not compatible with the original, which used

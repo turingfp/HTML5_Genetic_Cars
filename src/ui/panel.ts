@@ -60,22 +60,28 @@ export class Panel {
     this.replayButton.addEventListener('click', callbacks.onToggleReplay);
 
     this.mutationRate = required<HTMLInputElement>('mutation-rate');
-    this.mutationRate.addEventListener('input', () =>
-      callbacks.onMutationRate(Number(this.mutationRate.value) / 100),
-    );
+    this.mutationRate.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onMutationRate(Number(this.mutationRate.value) / 100);
+    });
 
     this.mutationSize = required<HTMLInputElement>('mutation-size');
-    this.mutationSize.addEventListener('input', () =>
-      callbacks.onMutationSize(Number(this.mutationSize.value) / 100),
-    );
+    this.mutationSize.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onMutationSize(Number(this.mutationSize.value) / 100);
+    });
 
     this.elites = required<HTMLInputElement>('elites');
-    this.elites.addEventListener('input', () => callbacks.onEliteCount(Number(this.elites.value)));
+    this.elites.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onEliteCount(Number(this.elites.value));
+    });
 
     this.population = required<HTMLInputElement>('population');
-    this.population.addEventListener('input', () =>
-      callbacks.onPopulationSize(Number(this.population.value)),
-    );
+    this.population.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onPopulationSize(Number(this.population.value));
+    });
 
     this.seedInput = required<HTMLInputElement>('seed-input');
     required('rebuild').addEventListener('click', () => {
@@ -124,5 +130,18 @@ export class Panel {
     this.mutationSize.value = String(Math.round(values.mutationSize * 100));
     this.elites.value = String(values.eliteCount);
     this.population.value = String(values.populationSize);
+    this.syncLabels();
+  }
+
+  /** Keep each slider's readout showing that slider's current value. */
+  private syncLabels(): void {
+    const set = (name: string, text: string) => {
+      const el = document.querySelector<HTMLElement>(`[data-readout="${name}"]`);
+      if (el) el.textContent = text;
+    };
+    set('mutation-rate', `${this.mutationRate.value}%`);
+    set('mutation-size', `${this.mutationSize.value}%`);
+    set('elites', this.elites.value);
+    set('population', this.population.value);
   }
 }

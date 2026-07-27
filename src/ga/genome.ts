@@ -150,7 +150,13 @@ export function crossover(rng: Rng, a: CarDef, b: CarDef): CarDef {
  * At size = 1 the window covers the whole range, which is why the default
  * "mutation size" of 100% behaves like a random re-roll.
  */
-function mutateValue(rng: Rng, old: number, min: number, range: number, size: number): number {
+export function mutateValue(
+  rng: Rng,
+  old: number,
+  min: number,
+  range: number,
+  size: number,
+): number {
   const span = range * size;
   let base = old - 0.5 * span;
   if (base < min) base = min;

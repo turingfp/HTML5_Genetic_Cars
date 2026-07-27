@@ -12,6 +12,7 @@ interface Debug {
   replaying: boolean;
   hallOfFame: number;
   trackSignature: number;
+  mode: '2d' | '3d';
 }
 
 const debug = (page: Page): Promise<Debug> =>
@@ -134,6 +135,42 @@ test('settings persist across a reload', async ({ page }) => {
 
   await expect(page.locator('#elites')).toHaveValue('6');
   await expect(page.locator('#mutation-rate')).toHaveValue('30');
+});
+
+test('switches to the 3D mode and keeps evolving', async ({ page }) => {
+  const errors = watchForErrors(page);
+  await page.goto('/');
+
+  expect((await debug(page)).mode).toBe('2d');
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+
+  // Box3D compiles WebAssembly and three.js is fetched on demand.
+  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '3d', null, {
+    timeout: 45_000,
+  });
+
+  const started = await debug(page);
+  expect(started.alive).toBe(20);
+
+  await page.getByRole('button', { name: 'max' }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().generation >= 1, null, {
+    timeout: 60_000,
+  });
+
+  const evolved = await debug(page);
+  expect(evolved.bestX).toBeGreaterThanOrEqual(0);
+  expect(evolved.generation).toBeGreaterThanOrEqual(1);
+
+  // The 3D canvas should be the visible one now.
+  await expect(page.locator('#view3d')).toBeVisible();
+  await expect(page.locator('#view')).toBeHidden();
+
+  // And switching back restores the flat simulation.
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '2d');
+  await expect(page.locator('#view')).toBeVisible();
+
+  expect(errors).toEqual([]);
 });
 
 test('is usable on a narrow viewport', async ({ page }) => {

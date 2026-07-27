@@ -76,6 +76,48 @@ export const TRACK_START_Y = 0;
  */
 export const TILE_TILT_GAIN = 1.5;
 
+/**
+ * Hard limit on how far a tile may tilt, just under a quarter turn.
+ *
+ * The formula above reaches 2.25 rad (129 degrees) on late tiles, which tips
+ * a tile past vertical so the track doubles back on itself. That makes the
+ * surface no longer a function of x — it breaks the terrain fill, the visible
+ * range lookup and the distance markers, and an overhang is not something a
+ * car can drive along anyway. Clamping keeps the course brutally steep while
+ * guaranteeing it always advances.
+ */
+export const MAX_TILE_TILT = 1.4;
+
+/* ── 3D mode ────────────────────────────────────────────────────────────
+ * The 3D car is the 2D silhouette extruded along z, so it needs two extra
+ * genes: how wide the body is, and how far the wheels sit outboard of it.
+ */
+
+/** Chassis half-width spans [0.15, 0.95). */
+export const CHASSIS_HALF_WIDTH_MIN = 0.15;
+export const CHASSIS_HALF_WIDTH_RANGE = 0.8;
+
+/** Wheel outboard offset spans [0.02, 0.37). */
+export const WHEEL_GAP_MIN = 0.02;
+export const WHEEL_GAP_RANGE = 0.35;
+
+/** Half-width of the drivable road surface. */
+export const ROAD_HALF_WIDTH = 4;
+
+/**
+ * How far the road rolls side to side, growing with distance like the pitch
+ * does. This is the 3D mode's own difficulty: cars must resist tipping over.
+ */
+export const ROAD_BANK_GAIN = 0.5;
+export const MAX_ROAD_BANK = 0.45;
+
+/** A car this far to the side, or this far below the road, has fallen off. */
+export const FALL_OFF_LATERAL = ROAD_HALF_WIDTH + 2.5;
+export const FALL_OFF_DEPTH = 8;
+
+/** Physics sub-steps per step for Box3D's solver. */
+export const SUB_STEP_COUNT = 4;
+
 /* ── Car life cycle ─────────────────────────────────────────────────────── */
 
 /** 10 seconds of stalling at 60Hz before a car dies. */

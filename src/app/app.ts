@@ -22,7 +22,9 @@ import {
   type Speed,
 } from '../config';
 import { randomSeed } from '../core/rng';
-import type { CarScore } from '../ga/evolution';
+import type { CarScore, GAParams } from '../ga/evolution';
+import type { CarDef } from '../ga/genome';
+import type { Car3DDef } from '../ga/genome3d';
 import { Chart, type GenerationStats } from '../render/chart';
 import { Minimap } from '../render/minimap';
 import { Renderer } from '../render/renderer';
@@ -40,7 +42,14 @@ import {
   syncSeedToUrl,
   type HallOfFameEntry,
 } from '../ui/storage';
+import type { Renderer3D } from '../render3d/renderer3d';
+import type { Simulation3D, World3DSnapshot } from '../sim3d/simulation3d';
+import { createSnapshot3D } from '../sim3d/snapshot3d';
+import type { MinimapMarker } from '../render/minimap';
+import type { StatsView } from '../ui/stats';
 import { Loop } from './loop';
+
+export type Mode = '2d' | '3d';
 
 function element<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -64,6 +73,16 @@ export class App {
   private snapshot: WorldSnapshot = createSnapshot();
   private history: GenerationStats[] = [];
   private hallOfFame: HallOfFameEntry[] = [];
+
+  /**
+   * The 3D mode runs on Box3D, which has to compile WebAssembly first, so it
+   * is built the first time it is asked for and then kept.
+   */
+  private mode: Mode = '2d';
+  private sim3d: Simulation3D | null = null;
+  private renderer3d: Renderer3D | null = null;
+  private snapshot3d: World3DSnapshot = createSnapshot3D();
+  private loading3d = false;
 
   /** -1 follows whoever is in front; otherwise the index of a chosen car. */
   private cameraTarget = -1;
@@ -106,22 +125,10 @@ export class App {
     this.panel = new Panel({
       onSpeed: (speed) => this.setSpeed(speed),
       onPauseToggle: () => this.setPaused(!this.loop.paused),
-      onMutationRate: (rate) => {
-        this.sim.params.mutationRate = rate;
-        this.persist();
-      },
-      onMutationSize: (size) => {
-        this.sim.params.mutationSize = size;
-        this.persist();
-      },
-      onEliteCount: (count) => {
-        this.sim.params.eliteCount = count;
-        this.persist();
-      },
-      onPopulationSize: (size) => {
-        this.sim.params.populationSize = size;
-        this.persist();
-      },
+      onMutationRate: (rate) => this.setParam('mutationRate', rate),
+      onMutationSize: (size) => this.setParam('mutationSize', size),
+      onEliteCount: (count) => this.setParam('eliteCount', count),
+      onPopulationSize: (size) => this.setParam('populationSize', size),
       onRebuildTrack: (nextSeed) => this.rebuildTrack(nextSeed),
       onRandomSeed: () => this.panel.setSeed(randomSeed()),
       onResetPopulation: () => this.resetPopulation(),
@@ -154,6 +161,11 @@ export class App {
 
     const storedSpeed = stored.speed;
     this.setSpeed(storedSpeed && SPEEDS.includes(storedSpeed) ? storedSpeed : 1);
+
+    for (const button of document.querySelectorAll<HTMLButtonElement>('#modes button')) {
+      const mode = button.dataset.mode === '3d' ? '3d' : '2d';
+      button.addEventListener('click', () => void this.setMode(mode));
+    }
 
     this.installInputHandlers();
     this.snapCameraToLeader();
@@ -194,6 +206,10 @@ export class App {
   }
 
   private step(): void {
+    if (this.mode === '3d') {
+      this.sim3d?.step();
+      return;
+    }
     if (this.replaying) {
       this.ghost.advance();
       if (this.ghost.finished) this.ghost.rewind();
@@ -209,6 +225,11 @@ export class App {
     const dt = Math.min((now - this.lastDrawTime) / 1000, 0.25);
     this.lastDrawTime = now;
 
+    if (this.mode === '3d') {
+      this.draw3d(dt);
+      return;
+    }
+
     this.sim.snapshot(this.snapshot);
     const ghostFrame = this.ghost.current();
 
@@ -221,9 +242,49 @@ export class App {
       this.renderer.draw(this.sim.track, this.snapshot, ghostFrame);
     }
 
-    this.minimap.draw(this.sim.track, this.replaying ? null : this.snapshot, this.renderer.camera.x);
+    this.minimap.draw(
+      this.sim.track,
+      this.replaying ? null : this.markersFrom2D(),
+      this.renderer.camera.x,
+      this.snapshot.bestX,
+    );
     this.healthStrip.draw(this.snapshot);
-    this.updateReadouts();
+    this.updateReadouts(this.snapshot);
+  }
+
+  private draw3d(dt: number): void {
+    const sim = this.sim3d;
+    const renderer = this.renderer3d;
+    if (!sim || !renderer) return;
+
+    sim.snapshot(this.snapshot3d);
+    renderer.draw(sim.track, this.snapshot3d, dt);
+    this.minimap.draw(
+      sim.track.profile,
+      this.markersFrom3D(),
+      this.snapshot3d.leader.x,
+      this.snapshot3d.bestX,
+    );
+    this.healthStrip.draw(this.snapshot3d);
+    this.updateReadouts(this.snapshot3d);
+  }
+
+  private markersFrom2D(): MinimapMarker[] {
+    return this.snapshot.cars.map((car, i) => ({
+      x: car.chassis.x,
+      alive: car.alive,
+      isElite: car.isElite,
+      isLeader: i === this.snapshot.leaderIndex,
+    }));
+  }
+
+  private markersFrom3D(): MinimapMarker[] {
+    return this.snapshot3d.cars.map((car, i) => ({
+      x: car.chassis.position.x,
+      alive: car.alive,
+      isElite: car.isElite,
+      isLeader: i === this.snapshot3d.leaderIndex,
+    }));
   }
 
   private followTarget(): { x: number; y: number } | null {
@@ -238,8 +299,7 @@ export class App {
     return { x: snapshot.leaderX, y: snapshot.leaderY };
   }
 
-  private updateReadouts(): void {
-    const snapshot = this.snapshot;
+  private updateReadouts(snapshot: StatsView): void {
     this.readouts.set('generation', String(snapshot.generation));
     this.readouts.set('alive', `${snapshot.aliveCount}/${snapshot.cars.length}`);
     this.readouts.set('distance', `${snapshot.bestX.toFixed(1)}m`);
@@ -259,7 +319,10 @@ export class App {
     }
   }
 
-  private onGenerationEnd(scores: CarScore[], generation: number): void {
+  private onGenerationEnd(
+    scores: CarScore<CarDef | Car3DDef>[],
+    generation: number,
+  ): void {
     if (scores.length === 0) return;
     const sorted = scores.slice().sort((a, b) => b.score - a.score);
     const half = Math.max(1, Math.ceil(sorted.length / 2));
@@ -280,9 +343,12 @@ export class App {
     this.ghost.rewind();
   }
 
-  private recordHallOfFame(best: CarScore, generation: number): void {
+  private recordHallOfFame(best: CarScore<CarDef | Car3DDef>, generation: number): void {
+    // A 3D car carries its silhouette inside `base`; the board and its
+    // thumbnails only ever deal in silhouettes.
+    const def = 'base' in best.def ? best.def.base : best.def;
     this.hallOfFame.push({
-      def: structuredClone(best.def),
+      def: structuredClone(def),
       score: best.score,
       distance: best.distance,
       generation,
@@ -323,6 +389,13 @@ export class App {
     }
   }
 
+  /** Generation settings apply to both worlds, so the modes stay comparable. */
+  private setParam<K extends keyof GAParams>(key: K, value: GAParams[K]): void {
+    this.sim.params[key] = value;
+    if (this.sim3d) this.sim3d.params[key] = value;
+    this.persist();
+  }
+
   private setSpeed(speed: Speed): void {
     this.loop.speed = speed;
     if (this.loop.paused) this.setPaused(false);
@@ -353,7 +426,9 @@ export class App {
   }
 
   private resetPopulation(): void {
-    this.sim.resetPopulation();
+    if (this.mode === '3d') this.sim3d?.resetPopulation();
+    else this.sim.resetPopulation();
+
     this.history = [];
     this.chart.draw(this.history);
     this.ghost.clear();
@@ -361,11 +436,13 @@ export class App {
     this.replaying = false;
     this.panel.setReplaying(false);
     this.setCameraTarget(-1);
-    this.snapCameraToLeader();
+    if (this.mode === '2d') this.snapCameraToLeader();
   }
 
   private rebuildTrack(seed: string): void {
     this.sim.setTrack(seed);
+    // Both worlds follow the same seed, so switching mode shows the same course.
+    this.sim3d?.setTrack(seed);
     this.history = [];
     this.chart.draw(this.history);
     this.ghost.clear();
@@ -376,7 +453,77 @@ export class App {
     this.readouts.set('seed', seed);
     syncSeedToUrl(seed);
     this.setCameraTarget(-1);
-    this.snapCameraToLeader();
+    if (this.mode === '2d') this.snapCameraToLeader();
+  }
+
+  /**
+   * Switch between the flat and 3D simulations. They are independent worlds
+   * that share the interface, the track seed and the generation controls.
+   */
+  private async setMode(mode: Mode): Promise<void> {
+    if (mode === this.mode || this.loading3d) return;
+
+    const view2d = element<HTMLCanvasElement>('view');
+    const view3d = element<HTMLCanvasElement>('view3d');
+
+    for (const button of document.querySelectorAll<HTMLButtonElement>('#modes button')) {
+      button.setAttribute('aria-pressed', button.dataset.mode === mode ? 'true' : 'false');
+    }
+
+    if (mode === '3d') {
+      if (!this.sim3d) {
+        this.loading3d = true;
+        this.flashBanner('Loading the 3D physics engine…');
+        try {
+          // Box3D and three.js are only fetched when someone asks for 3D, so
+          // the flat mode does not carry them.
+          const [{ Simulation3D }, { Renderer3D }] = await Promise.all([
+            import('../sim3d/simulation3d'),
+            import('../render3d/renderer3d'),
+          ]);
+          this.sim3d = await Simulation3D.create({
+            trackSeed: this.sim.trackSeed,
+            params: { ...this.sim.params },
+          });
+          this.renderer3d = new Renderer3D(view3d);
+        } catch (error) {
+          this.loading3d = false;
+          this.flashBanner('Could not start 3D mode in this browser.');
+          console.error(error);
+          return;
+        }
+        this.sim3d.onGenerationEnd = (scores, generation) =>
+          this.onGenerationEnd(scores, generation);
+        this.loading3d = false;
+      }
+      // Keep both worlds on the same course and settings.
+      if (this.sim3d.trackSeed !== this.sim.trackSeed) this.sim3d.setTrack(this.sim.trackSeed);
+      Object.assign(this.sim3d.params, this.sim.params);
+
+      view2d.hidden = true;
+      view3d.hidden = false;
+      this.mode = '3d';
+      this.history = [];
+      this.chart.draw(this.history);
+      this.minimap.exploredX = 0;
+      this.sim3d.snapshot(this.snapshot3d);
+      this.renderer3d?.snapTo(
+        this.snapshot3d.leader.x,
+        this.snapshot3d.leader.y,
+        this.snapshot3d.leader.z,
+      );
+    } else {
+      view3d.hidden = true;
+      view2d.hidden = false;
+      this.mode = '2d';
+      this.history = [];
+      this.chart.draw(this.history);
+      this.minimap.exploredX = 0;
+      this.renderer.camera.resize();
+      this.snapCameraToLeader();
+    }
+
+    this.loop.resetClock();
   }
 
   private snapCameraToLeader(): void {
@@ -419,11 +566,13 @@ export class App {
 
   /** Handle exposed for end-to-end tests. */
   debug() {
+    const active = this.mode === '3d' && this.sim3d ? this.sim3d : this.sim;
     return {
-      generation: this.sim.generation,
-      frame: this.sim.frame,
-      alive: this.sim.aliveCount,
-      bestX: this.sim.bestX,
+      mode: this.mode,
+      generation: active.generation,
+      frame: active.frame,
+      alive: active.aliveCount,
+      bestX: active.bestX,
       stepsPerSecond: this.loop.stepsPerSecond,
       paused: this.loop.paused,
       speed: this.loop.speed,

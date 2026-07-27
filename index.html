@@ -23,6 +23,10 @@
           </p>
         </div>
         <div class="header-meta">
+          <div class="segmented mode-switch" id="modes" role="group" aria-label="Simulation mode">
+            <button type="button" data-mode="2d" aria-pressed="true">2D</button>
+            <button type="button" data-mode="3d" aria-pressed="false">3D</button>
+          </div>
           <span class="seed-chip">track <code data-readout="seed">—</code></span>
           <button type="button" id="share" class="ghost-button" title="Copy a link to this track">
             Copy link
@@ -32,6 +36,7 @@
 
       <section class="stage">
         <canvas id="view" aria-label="Simulation view"></canvas>
+        <canvas id="view3d" aria-label="3D simulation view" hidden></canvas>
         <div class="hud">
           <div class="hud-item">
             <span class="hud-label">generation</span>

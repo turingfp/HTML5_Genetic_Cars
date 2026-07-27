@@ -8,6 +8,7 @@
  */
 
 import {
+  MAX_TILE_TILT,
   TILE_HEIGHT,
   TILE_TILT_GAIN,
   TILE_WIDTH,
@@ -53,8 +54,10 @@ export function generateTrack(seed: string, tileCount = TRACK_TILE_COUNT): Track
   let maxY = y;
 
   for (let k = 0; k < tileCount; k++) {
-    // Tilt is uniform in [-1.5, 1.5), scaled by how far along the track we are.
-    const angle = (rng() * 3 - 1.5) * TILE_TILT_GAIN * (k / tileCount);
+    // Tilt is uniform in [-1.5, 1.5), scaled by how far along the track we are,
+    // then clamped so the track can never fold back over itself.
+    const raw = (rng() * 3 - 1.5) * TILE_TILT_GAIN * (k / tileCount);
+    const angle = Math.max(-MAX_TILE_TILT, Math.min(MAX_TILE_TILT, raw));
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 

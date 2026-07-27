@@ -16,8 +16,12 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Chromium is pre-installed in this environment.
-        launchOptions: { args: ['--no-sandbox'] },
+        launchOptions: {
+          args: ['--no-sandbox'],
+          // Use a preinstalled Chromium when one is provided; this container
+          // ships its own build that Playwright would otherwise re-download.
+          ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
+        },
       },
     },
   ],

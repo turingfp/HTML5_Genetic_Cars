@@ -34,6 +34,8 @@ export interface CarSnapshot {
   alive: boolean;
   isElite: boolean;
   index: number;
+  /** The genome, so the renderer can build geometry without the physics world. */
+  def: CarDef | null;
   chassis: Pose;
   wheels: [Pose, Pose];
   /** Remaining health in [0, 1]. */
@@ -241,6 +243,7 @@ export class Simulation {
         alive: false,
         isElite: false,
         index: out.cars.length,
+        def: null,
         chassis: emptyPose(),
         wheels: [emptyPose(), emptyPose()],
         health01: 0,
@@ -262,6 +265,7 @@ export class Simulation {
       const car = this.cars[i]!;
       const snap = out.cars[i]!;
       snap.index = car.index;
+      snap.def = car.def;
       snap.isElite = car.isElite;
       snap.alive = car.alive;
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;

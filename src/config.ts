@@ -113,9 +113,14 @@ export const REPLAY_MAX_FRAMES = PHYSICS_HZ * 60 * 10;
 
 /* ── Presentation ───────────────────────────────────────────────────────── */
 
-/** Pixels per metre at default zoom. */
-export const DEFAULT_ZOOM = 70;
-export const MIN_ZOOM = 20;
+/**
+ * Pixels per metre. The original hardcoded 70 for a fixed 800px canvas; the
+ * view is now fluid, so the starting zoom is chosen to frame a fixed span of
+ * track and clamped for very narrow screens.
+ */
+export const DEFAULT_ZOOM = 45;
+export const TARGET_VISIBLE_METRES = 26;
+export const MIN_ZOOM = 18;
 export const MAX_ZOOM = 160;
 
 /** Camera smoothing, expressed as the original per-frame lerp at 60fps. */

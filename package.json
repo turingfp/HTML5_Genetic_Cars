@@ -1,0 +1,26 @@
+{
+  "name": "genetic-cars",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A genetic algorithm car evolver in HTML5 canvas",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "planck": "^1.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

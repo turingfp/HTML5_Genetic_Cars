@@ -76,6 +76,19 @@ npm run dev
 The end-to-end tests download their own Chromium by default. To reuse one that
 is already installed, set `CHROMIUM_PATH` to the binary.
 
+## Deploying
+
+The build is a self-contained static site, so any static host will serve it —
+there is no server side. `vercel.json` configures Vercel directly: import the
+repository and it builds with `npm run build` and serves `dist/`, with hashed
+assets cached indefinitely and the entry document always revalidated.
+
+Two things worth knowing if you host it elsewhere. Vite is configured with a
+relative `base`, so the site works from a subdirectory as well as from a domain
+root. And the 3D mode uses the single-threaded Box3D build deliberately, so it
+needs no `SharedArrayBuffer` and therefore no cross-origin isolation headers —
+it will run from a plain file host.
+
 ## How the code is organised
 
 The physics engine is kept behind a boundary: the simulation fills a plain

@@ -1,0 +1,6 @@
+# Nothing here affects the built site, so keep it out of the upload.
+tests
+docs
+playwright.config.ts
+test-results
+playwright-report

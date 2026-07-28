@@ -6,7 +6,6 @@
   "installCommand": "npm ci",
   "headers": [
     {
-      "comment": "Build output filenames carry a content hash, so they can be cached forever.",
       "source": "/assets/(.*)",
       "headers": [
         {
@@ -16,7 +15,6 @@
       ]
     },
     {
-      "comment": "The entry document must always be revalidated, or a cached copy would keep pointing at assets from an older deployment.",
       "source": "/",
       "headers": [
         {

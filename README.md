@@ -80,8 +80,14 @@ is already installed, set `CHROMIUM_PATH` to the binary.
 
 The build is a self-contained static site, so any static host will serve it —
 there is no server side. `vercel.json` configures Vercel directly: import the
-repository and it builds with `npm run build` and serves `dist/`, with hashed
-assets cached indefinitely and the entry document always revalidated.
+repository and it builds with `npm run build` and serves `dist/`.
+
+It sets two caching rules. Everything under `/assets/` carries a content hash
+in its filename, so it is cached for a year and marked immutable. The entry
+document is not, and must always be revalidated — a cached `index.html` would
+otherwise keep pointing at asset filenames from an older deployment. (Vercel's
+config schema rejects unknown keys, so those rules cannot be commented in
+place; hence this note.)
 
 Two things worth knowing if you host it elsewhere. Vite is configured with a
 relative `base`, so the site works from a subdirectory as well as from a domain

@@ -38,6 +38,25 @@ Both modes share the seed, the population controls and the genetic algorithm
 itself, so you can watch the same course punish different shapes. Box3D and
 three.js are only downloaded when you first switch to 3D.
 
+### Seeing the search
+
+![The graveyard after ten generations](docs/screenshot-graveyard.png)
+
+A single run is forgettable; the interesting object is the search. So the 3D
+view keeps a marker wherever a car died, across every generation — bright ones
+are recent, faded blue ones are ancient history, and a tilted marker means the
+car went over the edge rather than grinding to a halt. Drag to orbit, scroll to
+zoom, or hit **Survey the graveyard** to pull back and look down the course.
+
+What you get is a map of the problem rather than of one attempt. Deaths pile up
+in dense bands at the obstacles the population cannot yet pass, thin out behind
+the frontier as evolution solves them, and spray off both edges wherever the
+camber is steep enough to throw a car off. Motion trails show the current
+generation fanning out over the same ground.
+
+All the markers are a single `InstancedMesh`, so several thousand of them cost
+one draw call; they are recoloured once per generation rather than per frame.
+
 ## Running it
 
 ```sh

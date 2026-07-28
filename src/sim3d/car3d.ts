@@ -44,6 +44,10 @@ export class Car3D {
   score = 0;
   /** Set when the car left the road rather than simply running out of health. */
   fellOff = false;
+  /** Where the car ended up, recorded as it is destroyed. */
+  deathPosition: { x: number; y: number; z: number } | null = null;
+  /** Height of the road where it died, so a marker can sit on the surface. */
+  deathRoadY = 0;
 
   constructor(world: Box3DWorld, def: Car3DDef, index: number, isElite: boolean) {
     this.def = def;
@@ -154,6 +158,10 @@ export class Car3D {
   destroy(): void {
     this.score = this.computeScore();
     this.alive = false;
+    // Where it came to rest, captured before the body goes away. The renderer
+    // keeps these as a record of where the population keeps failing.
+    const resting = this.chassis?.getPosition();
+    if (resting) this.deathPosition = { x: resting.x, y: resting.y, z: resting.z };
     // Box3D destroys a body's joints and shapes along with it.
     this.chassis?.destroy();
     for (const wheel of this.wheels) wheel.destroy();

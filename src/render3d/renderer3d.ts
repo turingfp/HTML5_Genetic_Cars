@@ -27,11 +27,14 @@ import {
   WebGLRenderer,
 } from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { CAMERA_SMOOTHING, PHYSICS_HZ, TILE_HEIGHT, TILE_WIDTH } from '../config';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
 import { segmentRotation, type Track3D } from '../sim3d/track3d';
+import { Graveyard, type Death } from './graveyard';
+import { Trails } from './trails';
 
 const ELITE_COLOR = 0x60a5fa;
 const NORMAL_COLOR = 0xf87171;
@@ -59,6 +62,15 @@ export class Renderer3D {
   private focus = new Vector3(0, 2, 0);
   private observer: ResizeObserver | null = null;
 
+  private controls: OrbitControls;
+  readonly graveyard = new Graveyard();
+  readonly trails = new Trails();
+
+  /** Whether the camera keeps following the leader as it drives. */
+  followLeader = true;
+  showGraveyard = true;
+  showTrails = true;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.renderer = new WebGLRenderer({ canvas, antialias: true });
@@ -77,6 +89,21 @@ export class Renderer3D {
     sun.position.set(-30, 60, 35);
     this.scene.add(sun);
 
+    this.scene.add(this.graveyard.mesh);
+    this.scene.add(this.trails.group);
+
+    // Orbiting is the point of the 3D view: the graveyard is worth flying
+    // around and looking along. The target keeps tracking the action, so
+    // dragging changes your angle on the race rather than losing it.
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.minDistance = 3;
+    this.controls.maxDistance = 120;
+    // Stay above ground; looking up from underneath the road is disorienting.
+    this.controls.maxPolarAngle = Math.PI * 0.49;
+    this.camera.position.set(-5.5, 3.4, 7);
+
     this.resize();
     if (typeof ResizeObserver !== 'undefined') {
       this.observer = new ResizeObserver(() => this.resize());
@@ -89,6 +116,9 @@ export class Renderer3D {
     this.observer = null;
     this.clearCars();
     this.road?.geometry.dispose();
+    this.graveyard.dispose();
+    this.trails.dispose();
+    this.controls.dispose();
     this.renderer.dispose();
   }
 
@@ -224,25 +254,71 @@ export class Renderer3D {
       meshes.material.color.setHex(color);
     }
 
+    this.graveyard.mesh.visible = this.showGraveyard;
+    this.graveyard.update();
+
+    this.trails.group.visible = this.showTrails;
+    if (this.showTrails) {
+      this.trails.update(
+        snapshot.cars.map((car, i) => ({
+          alive: car.alive,
+          position: car.chassis.position,
+          color: i === snapshot.leaderIndex ? LEADER_COLOR : car.isElite ? ELITE_COLOR : NORMAL_COLOR,
+        })),
+      );
+    }
+
     this.updateCamera(snapshot, dt);
     this.renderer.render(this.scene, this.camera);
   }
 
-  private updateCamera(snapshot: World3DSnapshot, dt: number): void {
-    const target = snapshot.leaderIndex >= 0 ? snapshot.leader : { x: 0, y: 2, z: 0 };
-    // Same easing curve as the flat mode's camera, frame-rate independent.
-    const factor = 1 - Math.pow(1 - CAMERA_SMOOTHING, Math.max(dt, 0) * PHYSICS_HZ);
-    this.focus.x += (target.x - this.focus.x) * factor;
-    this.focus.y += (target.y - this.focus.y) * factor;
-    this.focus.z += (target.z - this.focus.z) * factor;
-
-    // Trail behind and above, offset to the side so the road reads in depth.
-    this.camera.position.set(this.focus.x - 5.5, this.focus.y + 3.4, this.focus.z + 7);
-    this.camera.lookAt(this.focus.x + 2.5, this.focus.y - 0.2, this.focus.z);
+  /** Record where a car came to rest. */
+  addDeath(death: Death): void {
+    this.graveyard.add(death);
   }
 
-  /** Nudge the camera straight to the action, e.g. after a reset. */
+  /** Start a fresh set of trails, at the top of a generation. */
+  resetTrails(): void {
+    this.trails.reset();
+  }
+
+  clearHistory(): void {
+    this.graveyard.clear();
+    this.trails.reset();
+  }
+
+  private updateCamera(snapshot: World3DSnapshot, dt: number): void {
+    if (this.followLeader) {
+      const target = snapshot.leaderIndex >= 0 ? snapshot.leader : { x: 0, y: 2, z: 0 };
+      // Same easing curve as the flat mode's camera, frame-rate independent.
+      const factor = 1 - Math.pow(1 - CAMERA_SMOOTHING, Math.max(dt, 0) * PHYSICS_HZ);
+      const previous = this.focus.clone();
+      this.focus.x += (target.x - this.focus.x) * factor;
+      this.focus.y += (target.y - this.focus.y) * factor;
+      this.focus.z += (target.z - this.focus.z) * factor;
+
+      // Carry the camera along with its target so the user's chosen orbit
+      // angle and distance survive; OrbitControls only owns the offset.
+      this.camera.position.add(this.focus.clone().sub(previous));
+      this.controls.target.copy(this.focus);
+    }
+    this.controls.update();
+  }
+
+  /** Point the camera at a place, keeping the current viewing angle. */
   snapTo(x: number, y: number, z: number): void {
+    const offset = this.camera.position.clone().sub(this.controls.target);
     this.focus.set(x, y, z);
+    this.controls.target.copy(this.focus);
+    this.camera.position.copy(this.focus).add(offset);
+    this.controls.update();
+  }
+
+  /** Frame the whole graveyard, to see where the population keeps dying. */
+  viewGraveyard(): void {
+    this.followLeader = false;
+    this.controls.target.copy(this.focus);
+    this.camera.position.set(this.focus.x - 26, this.focus.y + 20, this.focus.z + 30);
+    this.controls.update();
   }
 }

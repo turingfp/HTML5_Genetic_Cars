@@ -200,6 +200,32 @@ h2 {
   flex: 0 0 auto;
 }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toggle span {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+#view3d-controls[hidden] {
+  display: none;
+}
+
 .mode-switch button {
   min-width: 44px;
   font-weight: 600;

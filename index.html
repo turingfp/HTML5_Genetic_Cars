@@ -110,6 +110,24 @@
           <button type="button" id="replay" class="secondary-button">Watch best run</button>
           <button type="button" id="follow" class="secondary-button">Follow the leader</button>
         </div>
+
+        <div class="button-stack" id="view3d-controls" hidden>
+          <p class="hint">
+            Drag to orbit, scroll to zoom. Each marker is a car that died there —
+            bright means recent, tilted means it went over the edge.
+          </p>
+          <button type="button" id="view-graveyard" class="secondary-button">
+            Survey the graveyard
+          </button>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-graveyard" checked />
+            Death markers <span data-readout="deaths">0</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-trails" checked />
+            Motion trails
+          </label>
+        </div>
       </section>
 
       <section class="panel stats-panel">

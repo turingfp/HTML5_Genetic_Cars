@@ -165,10 +165,22 @@ test('switches to the 3D mode and keeps evolving', async ({ page }) => {
   await expect(page.locator('#view3d')).toBeVisible();
   await expect(page.locator('#view')).toBeHidden();
 
+  // The graveyard should have accumulated a marker per car that has died.
+  const deaths = Number((await page.locator('[data-readout="deaths"]').textContent()) ?? '0');
+  expect(deaths).toBeGreaterThanOrEqual(20);
+
+  // View controls belong to 3D only.
+  await expect(page.locator('#view3d-controls')).toBeVisible();
+  await page.getByRole('button', { name: 'Survey the graveyard' }).click();
+  await page.locator('#toggle-graveyard').uncheck();
+  await page.locator('#toggle-trails').uncheck();
+  await page.waitForTimeout(300);
+
   // And switching back restores the flat simulation.
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await page.waitForFunction(() => (window as any).__gcars.debug().mode === '2d');
   await expect(page.locator('#view')).toBeVisible();
+  await expect(page.locator('#view3d-controls')).toBeHidden();
 
   expect(errors).toEqual([]);
 });

@@ -167,6 +167,18 @@ export class App {
       button.addEventListener('click', () => void this.setMode(mode));
     }
 
+    element('view-graveyard').addEventListener('click', () => this.renderer3d?.viewGraveyard());
+    element<HTMLInputElement>('toggle-graveyard').addEventListener('change', (event) => {
+      if (this.renderer3d) {
+        this.renderer3d.showGraveyard = (event.target as HTMLInputElement).checked;
+      }
+    });
+    element<HTMLInputElement>('toggle-trails').addEventListener('change', (event) => {
+      if (this.renderer3d) {
+        this.renderer3d.showTrails = (event.target as HTMLInputElement).checked;
+      }
+    });
+
     this.installInputHandlers();
     this.snapCameraToLeader();
     this.loop.start();
@@ -267,6 +279,7 @@ export class App {
     );
     this.healthStrip.draw(this.snapshot3d);
     this.updateReadouts(this.snapshot3d);
+    this.readouts.set('deaths', String(renderer.graveyard.count));
   }
 
   private markersFrom2D(): MinimapMarker[] {
@@ -338,6 +351,9 @@ export class App {
     // One entry per generation, so the board tracks progress rather than
     // filling up with every incremental record inside a single round.
     this.recordHallOfFame(sorted[0]!, generation);
+
+    // Trails belong to a generation; the graveyard deliberately does not.
+    this.renderer3d?.resetTrails();
 
     // Each generation races the ghost from the start line again.
     this.ghost.rewind();
@@ -412,6 +428,8 @@ export class App {
   private setCameraTarget(index: number): void {
     this.cameraTarget = index;
     this.healthStrip.selected = index;
+    // In 3D this also re-engages the chase camera after free orbiting.
+    if (this.renderer3d && index < 0) this.renderer3d.followLeader = true;
   }
 
   private toggleReplay(): void {
@@ -426,8 +444,11 @@ export class App {
   }
 
   private resetPopulation(): void {
-    if (this.mode === '3d') this.sim3d?.resetPopulation();
-    else this.sim.resetPopulation();
+    if (this.mode === '3d') {
+      this.sim3d?.resetPopulation();
+      // A new population is a fresh search, so the record of the old one goes.
+      this.renderer3d?.clearHistory();
+    } else this.sim.resetPopulation();
 
     this.history = [];
     this.chart.draw(this.history);
@@ -443,6 +464,8 @@ export class App {
     this.sim.setTrack(seed);
     // Both worlds follow the same seed, so switching mode shows the same course.
     this.sim3d?.setTrack(seed);
+    // Deaths were recorded against the old course and mean nothing on this one.
+    this.renderer3d?.clearHistory();
     this.history = [];
     this.chart.draw(this.history);
     this.ghost.clear();
@@ -486,6 +509,18 @@ export class App {
             params: { ...this.sim.params },
           });
           this.renderer3d = new Renderer3D(view3d);
+          this.sim3d.onCarDeath = (car) => {
+            if (!car.deathPosition) return;
+            this.renderer3d?.addDeath({
+              // Along the course and across the road as it actually died, but
+              // pinned to the road height so the field reads as a death map.
+              x: car.deathPosition.x,
+              y: car.deathRoadY,
+              z: car.deathPosition.z,
+              generation: this.sim3d!.generation,
+              fellOff: car.fellOff,
+            });
+          };
         } catch (error) {
           this.loading3d = false;
           this.flashBanner('Could not start 3D mode in this browser.');
@@ -502,6 +537,7 @@ export class App {
 
       view2d.hidden = true;
       view3d.hidden = false;
+      element('view3d-controls').hidden = false;
       this.mode = '3d';
       this.history = [];
       this.chart.draw(this.history);
@@ -515,6 +551,7 @@ export class App {
     } else {
       view3d.hidden = true;
       view2d.hidden = false;
+      element('view3d-controls').hidden = true;
       this.mode = '2d';
       this.history = [];
       this.chart.draw(this.history);

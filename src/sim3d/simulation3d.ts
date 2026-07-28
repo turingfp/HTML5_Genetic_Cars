@@ -144,6 +144,10 @@ export class Simulation3D {
   }
 
   private killCar(car: Car3D): void {
+    // Capture the road height first: a car that went over the edge is far below
+    // the surface, and a marker floating in the void says less than one sitting
+    // where along the course it came to grief.
+    car.deathRoadY = this.roadHeightAt(car.maxX);
     car.destroy();
     this.aliveCount--;
     this.scores.push({

@@ -185,6 +185,30 @@ test('switches to the 3D mode and keeps evolving', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('keeps each mode’s records to itself', async ({ page }) => {
+  await page.goto('/');
+  // Build up a 2D hall of fame first.
+  await page.getByRole('button', { name: 'max' }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().hallOfFame >= 1, null, {
+    timeout: 60_000,
+  });
+  const flat = await debug(page);
+  expect(flat.hallOfFame).toBeGreaterThanOrEqual(1);
+
+  // Switching to 3D must not inherit them: it is a different problem on a
+  // different scale, so a 2D score standing as the 3D record is meaningless.
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '3d', null, {
+    timeout: 45_000,
+  });
+  expect((await debug(page)).hallOfFame).toBe(0);
+
+  // And going back restores the 2D records rather than losing them.
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '2d');
+  expect((await debug(page)).hallOfFame).toBe(flat.hallOfFame);
+});
+
 test('is usable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto('/');

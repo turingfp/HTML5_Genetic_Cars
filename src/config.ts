@@ -123,8 +123,33 @@ export const SUB_STEP_COUNT = 4;
 /** 10 seconds of stalling at 60Hz before a car dies. */
 export const MAX_CAR_HEALTH = PHYSICS_HZ * 10;
 
-/** Distance a car must gain on its own record to refill its health. */
-export const PROGRESS_EPSILON = 0.02;
+/**
+ * Health restored per metre of new ground gained.
+ *
+ * Health drains at PHYSICS_HZ per second, so this sets a minimum sustained
+ * speed: below PHYSICS_HZ / HEALTH_PER_METRE metres per second a car loses
+ * health faster than it earns it, and eventually dies.
+ *
+ * The original refilled the bar completely for any gain over two centimetres,
+ * which meant a car creeping forward at a millimetre a second topped itself up
+ * every few seconds and never died — one of them could hold up a whole
+ * generation indefinitely.
+ */
+export const HEALTH_PER_METRE = 240;
+
+/** The speed a car must average to stay alive, implied by the rate above. */
+export const MIN_SUSTAINED_SPEED = PHYSICS_HZ / HEALTH_PER_METRE;
+
+/**
+ * Hard ceiling on how long one generation may run.
+ *
+ * The speed rule above stops a car creeping forever, but a slow car that keeps
+ * just above the threshold can still hold a generation open for minutes while
+ * everything interesting has already finished. Survivors are retired at the
+ * cap and scored on what they actually achieved.
+ */
+export const MAX_GENERATION_SECONDS = 90;
+export const MAX_GENERATION_FRAMES = MAX_GENERATION_SECONDS * PHYSICS_HZ;
 
 /** Extra health drained per step while essentially motionless. */
 export const STUCK_HEALTH_PENALTY = 5;

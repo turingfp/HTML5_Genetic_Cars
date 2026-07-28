@@ -8,32 +8,35 @@
 
 import {
   AmbientLight,
-  BoxGeometry,
-  CapsuleGeometry,
+  BackSide,
   Color,
+  CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Fog,
   Group,
   HemisphereLight,
-  InstancedMesh,
-  Matrix4,
   Mesh,
-  MeshLambertMaterial,
+  MeshBasicMaterial,
   MeshStandardMaterial,
+  PCFSoftShadowMap,
   PerspectiveCamera,
-  Quaternion,
   Scene,
+  ShaderMaterial,
+  SphereGeometry,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import { CAMERA_SMOOTHING, PHYSICS_HZ, TILE_HEIGHT, TILE_WIDTH } from '../config';
+import { CAMERA_SMOOTHING, PHYSICS_HZ } from '../config';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
+import { wheelHalfTread } from '../sim3d/car3d';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
-import { segmentRotation, type Track3D } from '../sim3d/track3d';
+import type { Track3D } from '../sim3d/track3d';
 import { Graveyard, type Death } from './graveyard';
+import { buildRoadGeometry } from './road';
 import { Trails } from './trails';
 
 const ELITE_COLOR = 0x60a5fa;
@@ -53,7 +56,7 @@ export class Renderer3D {
   private camera: PerspectiveCamera;
   private canvas: HTMLCanvasElement;
 
-  private road: InstancedMesh | null = null;
+  private road: Mesh | null = null;
   private roadSeed = '';
   private cars: CarMeshes[] = [];
   private carGeneration = -1;
@@ -61,6 +64,7 @@ export class Renderer3D {
   /** Where the camera is looking, eased toward the leader. */
   private focus = new Vector3(0, 2, 0);
   private observer: ResizeObserver | null = null;
+  private sun: DirectionalLight;
 
   private controls: OrbitControls;
   readonly graveyard = new Graveyard();
@@ -75,19 +79,36 @@ export class Renderer3D {
     this.canvas = canvas;
     this.renderer = new WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // Shadows are what make the cars sit *on* the road rather than float above
+    // it; without them the scene reads flat however good the geometry is.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = PCFSoftShadowMap;
 
     this.scene = new Scene();
-    this.scene.background = new Color(0x0b1120);
-    this.scene.fog = new Fog(0x0b1120, 40, 130);
+    this.scene.fog = new Fog(0x0b1120, 55, 200);
+    this.scene.add(this.buildSky());
 
-    this.camera = new PerspectiveCamera(55, 1, 0.1, 400);
+    this.camera = new PerspectiveCamera(55, 1, 0.1, 600);
 
-    this.scene.add(new AmbientLight(0xffffff, 0.35));
-    this.scene.add(new HemisphereLight(0x9ec9ff, 0x0b1120, 0.7));
+    this.scene.add(new AmbientLight(0xffffff, 0.25));
+    this.scene.add(new HemisphereLight(0x9ec9ff, 0x101a2e, 0.55));
 
-    const sun = new DirectionalLight(0xfff2d5, 2.1);
-    sun.position.set(-30, 60, 35);
-    this.scene.add(sun);
+    this.sun = new DirectionalLight(0xfff2d5, 2.4);
+    this.sun.position.set(-24, 40, 22);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    // A tight ortho frustum that travels with the action keeps the shadow map's
+    // texels small enough to resolve individual wheels.
+    const shadow = this.sun.shadow.camera;
+    shadow.near = 1;
+    shadow.far = 120;
+    shadow.left = -22;
+    shadow.right = 22;
+    shadow.top = 22;
+    shadow.bottom = -22;
+    this.sun.shadow.bias = -0.0012;
+    this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
 
     this.scene.add(this.graveyard.mesh);
     this.scene.add(this.trails.group);
@@ -102,7 +123,7 @@ export class Renderer3D {
     this.controls.maxDistance = 120;
     // Stay above ground; looking up from underneath the road is disorienting.
     this.controls.maxPolarAngle = Math.PI * 0.49;
-    this.camera.position.set(-5.5, 3.4, 7);
+    this.camera.position.set(-8, 4.6, 9.5);
 
     this.resize();
     if (typeof ResizeObserver !== 'undefined') {
@@ -131,31 +152,57 @@ export class Renderer3D {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Build the road once per track: 200 identical boxes, one draw call. */
+  /** A vertical gradient standing in for a sky, so the horizon is not a void. */
+  private buildSky(): Mesh {
+    const material = new ShaderMaterial({
+      side: BackSide,
+      depthWrite: false,
+      uniforms: {
+        top: { value: new Color(0x0a1122) },
+        bottom: { value: new Color(0x24466e) },
+      },
+      vertexShader: `
+        varying vec3 vWorld;
+        void main() {
+          vWorld = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 top;
+        uniform vec3 bottom;
+        varying vec3 vWorld;
+        void main() {
+          float h = clamp(normalize(vWorld).y * 0.5 + 0.5, 0.0, 1.0);
+          gl_FragColor = vec4(mix(bottom, top, pow(h, 0.7)), 1.0);
+        }
+      `,
+    });
+    const sky = new Mesh(new SphereGeometry(400, 24, 16), material);
+    sky.frustumCulled = false;
+    return sky;
+  }
+
+  /** Build the road once per track, as a single stitched ribbon. */
   private buildRoad(track: Track3D): void {
     if (this.road) {
       this.scene.remove(this.road);
       this.road.geometry.dispose();
+      (this.road.material as MeshStandardMaterial).dispose();
       this.road = null;
     }
 
-    const geometry = new BoxGeometry(TILE_WIDTH, TILE_HEIGHT, track.halfWidth * 2);
-    const material = new MeshLambertMaterial({ color: 0x51708f });
-    const mesh = new InstancedMesh(geometry, material, track.segments.length);
-
-    const matrix = new Matrix4();
-    const position = new Vector3();
-    const quaternion = new Quaternion();
-    const scale = new Vector3(1, 1, 1);
-
-    track.segments.forEach((segment, i) => {
-      const r = segmentRotation(segment);
-      position.set(segment.center.x, segment.center.y, segment.center.z);
-      quaternion.set(r.x, r.y, r.z, r.w);
-      matrix.compose(position, quaternion, scale);
-      mesh.setMatrixAt(i, matrix);
+    const material = new MeshStandardMaterial({
+      color: 0x62809c,
+      roughness: 0.95,
+      metalness: 0.02,
+      // Tilt is clamped only just under a quarter turn, so two neighbouring
+      // tiles can differ by most of a half turn and the quad joining them
+      // genuinely folds. No winding is correct there, so draw both sides.
+      side: DoubleSide,
     });
-    mesh.instanceMatrix.needsUpdate = true;
+    const mesh = new Mesh(buildRoadGeometry(track), material);
+    mesh.receiveShadow = true;
 
     this.scene.add(mesh);
     this.road = mesh;
@@ -176,19 +223,21 @@ export class Renderer3D {
     this.clearCars();
 
     const wheelMaterial = new MeshStandardMaterial({
-      color: 0x2f3d52,
-      roughness: 0.7,
-      metalness: 0.2,
+      color: 0x11161f,
+      roughness: 0.85,
+      metalness: 0.05,
     });
+    const hubMaterial = new MeshBasicMaterial({ color: 0xcbd5e1 });
 
     for (const def of defs) {
       const group = new Group();
       const material = new MeshStandardMaterial({
         color: NORMAL_COLOR,
-        roughness: 0.5,
-        metalness: 0.15,
-        transparent: true,
-        opacity: 0.85,
+        roughness: 0.45,
+        metalness: 0.2,
+        // Opaque: a translucent body hid the wheels behind it and made the
+        // whole car read as a smudge rather than a machine.
+        flatShading: true,
       });
 
       if (!def) {
@@ -198,16 +247,29 @@ export class Renderer3D {
 
       const points = chassisHullPoints(def).map((p) => new Vector3(p.x, p.y, p.z));
       const chassis = new Mesh(new ConvexGeometry(points), material);
+      chassis.castShadow = true;
       group.add(chassis);
 
       const wheels: Mesh[] = [];
       for (const mount of wheelMounts(def)) {
         const radius = def.base.wheelRadius[mount.wheel]!;
-        // A capsule matches the physics shape; three builds it along y, so it
-        // is turned to lie along the axle.
-        const geometry = new CapsuleGeometry(radius, 0.24, 4, 16);
+        const width = wheelHalfTread(radius) * 2;
+        // A cylinder matching the physics hull exactly. Three builds cylinders
+        // along y, so it is turned to lie along the axle.
+        const geometry = new CylinderGeometry(radius, radius, width, 16);
         geometry.rotateX(Math.PI / 2);
         const wheel = new Mesh(geometry, wheelMaterial);
+        wheel.castShadow = true;
+
+        // A pale hub disc on the outer face, so the wheel visibly spins.
+        const hub = new Mesh(new CylinderGeometry(radius * 0.42, radius * 0.42, width * 1.04, 12), hubMaterial);
+        hub.rotateX(Math.PI / 2);
+        // Offset marker breaks the disc's symmetry so rotation is unmistakable.
+        const spoke = new Mesh(new CylinderGeometry(radius * 0.1, radius * 0.1, width * 1.06, 6), hubMaterial);
+        spoke.rotateX(Math.PI / 2);
+        spoke.position.y = radius * 0.62;
+        wheel.add(hub, spoke);
+
         wheels.push(wheel);
         group.add(wheel);
       }
@@ -269,6 +331,13 @@ export class Renderer3D {
     }
 
     this.updateCamera(snapshot, dt);
+
+    // Carry the sun with the action so the shadow frustum stays tight around
+    // whatever is on screen rather than spanning the whole 300 metre course.
+    this.sun.target.position.copy(this.focus);
+    this.sun.position.set(this.focus.x - 24, this.focus.y + 40, this.focus.z + 22);
+    this.sun.target.updateMatrixWorld();
+
     this.renderer.render(this.scene, this.camera);
   }
 

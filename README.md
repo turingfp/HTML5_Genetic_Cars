@@ -35,8 +35,17 @@ the early flat ground; something wider usually has to evolve to survive the
 camber.
 
 Both modes share the seed, the population controls and the genetic algorithm
-itself, so you can watch the same course punish different shapes. Box3D and
-three.js are only downloaded when you first switch to 3D.
+itself, so you can watch the same course punish different shapes. Records are
+kept separately, though — a flat car and a four-wheeled one are solving
+different problems on different scales. Box3D and three.js are only downloaded
+when you first switch to 3D.
+
+Two things in the 3D view try to show the *search* rather than a single run.
+Every car leaves a marker where it died, kept across generations, so the
+clusters where the population keeps failing build up and the bright frontier of
+recent deaths creeps forward as evolution finds a way through. And each
+generation draws its trails, so you can see the spread of paths the current
+population is taking. Both can be turned off, and the camera orbits freely.
 
 ### Seeing the search
 
@@ -155,6 +164,12 @@ the same chassis vertex, producing cars that could not drive; and the tilt
 formula reached 129 degrees on late tiles, folding the track back over itself so
 that the surface was no longer a function of x — tilt is now clamped just under
 a quarter turn.
+
+A car that crept forward at a millimetre a second used to be immortal: any gain
+over two centimetres refilled its health bar completely, so a single crawler
+could hold a generation open indefinitely. Health is now earned in proportion to
+ground gained, which sets a minimum sustained speed, and a generation has a hard
+time limit so one slow survivor cannot drag it out.
 
 Two behavioural notes: the physics feel is close but not identical, since the
 solver differs; and track seeds are not compatible with the original, which used

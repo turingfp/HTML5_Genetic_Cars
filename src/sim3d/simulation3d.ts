@@ -12,6 +12,7 @@ import {
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
   GRAVITY_Y,
+  MAX_GENERATION_FRAMES,
   MAX_CAR_HEALTH,
   ROAD_HALF_WIDTH,
   SUB_STEP_COUNT,
@@ -134,6 +135,13 @@ export class Simulation3D {
       const died = car.update(this.roadHeightAt(car.maxX));
       if (car.maxX > this.bestX) this.bestX = car.maxX;
       if (died) this.killCar(car);
+    }
+
+    // Retire anyone still going at the time limit, as the flat mode does.
+    if (this.frame >= MAX_GENERATION_FRAMES) {
+      for (const car of this.cars) {
+        if (car.alive) this.killCar(car);
+      }
     }
 
     if (this.aliveCount <= 0) {

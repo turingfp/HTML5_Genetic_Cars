@@ -10,7 +10,13 @@ import type { CarDef } from '../ga/genome';
 import type { Speed } from '../config';
 
 const SETTINGS_KEY = 'genetic-cars:settings:v1';
-const HALL_KEY = 'genetic-cars:hall-of-fame:v1';
+
+/**
+ * Records are kept per mode. A flat car and a four-wheeled one are solving
+ * different problems on different scales, so a single leaderboard would let a
+ * 2D score stand as the 3D record and vice versa.
+ */
+const hallKey = (mode: string) => `genetic-cars:hall-of-fame:${mode}:v2`;
 
 export interface Settings extends GAParams {
   speed: Speed;
@@ -51,13 +57,13 @@ export function saveSettings(settings: Settings): void {
   write(SETTINGS_KEY, settings);
 }
 
-export function loadHallOfFame(): HallOfFameEntry[] {
-  const entries = read<HallOfFameEntry[]>(HALL_KEY) ?? [];
+export function loadHallOfFame(mode: string): HallOfFameEntry[] {
+  const entries = read<HallOfFameEntry[]>(hallKey(mode)) ?? [];
   return entries.filter((e) => e && e.def && Number.isFinite(e.score));
 }
 
-export function saveHallOfFame(entries: HallOfFameEntry[]): void {
-  write(HALL_KEY, entries);
+export function saveHallOfFame(mode: string, entries: HallOfFameEntry[]): void {
+  write(hallKey(mode), entries);
 }
 
 /** The track seed from the URL, if the page was opened from a shared link. */

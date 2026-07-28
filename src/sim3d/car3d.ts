@@ -12,10 +12,10 @@ import {
   FALL_OFF_DEPTH,
   FALL_OFF_LATERAL,
   GRAVITY_Y,
+  HEALTH_PER_METRE,
   MAX_CAR_HEALTH,
   MOTOR_SPEED,
   PHYSICS_HZ,
-  PROGRESS_EPSILON,
   STUCK_HEALTH_PENALTY,
   STUCK_VELOCITY_THRESHOLD,
   WHEEL_FRICTION,
@@ -25,7 +25,39 @@ import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
 import type { Box3DBody, Box3DWorld } from './box3d';
 
 /** Wheels are capsules laid along z, which rolls like a rounded tyre. */
-const WHEEL_HALF_TREAD = 0.12;
+/**
+ * Half the width of a wheel, as a fraction of its radius.
+ *
+ * This has to scale with the radius. A fixed value made a big wheel a capsule
+ * whose radius exceeded its length — geometrically a sphere, which both looked
+ * wrong and behaved wrong, rolling freely sideways instead of tracking.
+ */
+const WHEEL_TREAD_RATIO = 0.3;
+
+/** Sides of the prism used to approximate a wheel. Mass converges by 16. */
+const WHEEL_FACETS = 16;
+
+export function wheelHalfTread(radius: number): number {
+  return radius * WHEEL_TREAD_RATIO;
+}
+
+/**
+ * A wheel as a convex hull: a regular prism around the z axis, which is the
+ * axle direction. Gives a flat tread that grips and a real contact patch,
+ * where a capsule only ever touched the ground at one point.
+ */
+export function wheelHullPoints(radius: number): { x: number; y: number; z: number }[] {
+  const halfTread = wheelHalfTread(radius);
+  const points: { x: number; y: number; z: number }[] = [];
+  for (let i = 0; i < WHEEL_FACETS; i++) {
+    const angle = (i / WHEEL_FACETS) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    points.push({ x, y, z: -halfTread });
+    points.push({ x, y, z: halfTread });
+  }
+  return points;
+}
 
 export class Car3D {
   readonly def: Car3DDef;
@@ -78,10 +110,8 @@ export class Car3D {
           z: mount.z,
         },
       });
-      wheel.createCapsule({
-        center1: { x: 0, y: 0, z: -WHEEL_HALF_TREAD },
-        center2: { x: 0, y: 0, z: WHEEL_HALF_TREAD },
-        radius,
+      wheel.createHull({
+        points: wheelHullPoints(radius),
         density: def.base.wheelDensity[mount.wheel]!,
         friction: WHEEL_FRICTION,
         restitution: WHEEL_RESTITUTION,
@@ -134,14 +164,16 @@ export class Car3D {
       return true;
     }
 
-    if (p.x > this.maxX + PROGRESS_EPSILON) {
-      this.health = MAX_CAR_HEALTH;
+    // As in the flat mode: health is earned per metre, so inching forward is
+    // not enough to stay alive.
+    if (p.x > this.maxX) {
+      this.health = Math.min(MAX_CAR_HEALTH, this.health + (p.x - this.maxX) * HEALTH_PER_METRE);
       this.maxX = p.x;
-    } else {
-      this.health--;
-      if (Math.abs(chassis.getLinearVelocity().x) < STUCK_VELOCITY_THRESHOLD) {
-        this.health -= STUCK_HEALTH_PENALTY;
-      }
+    }
+
+    this.health--;
+    if (Math.abs(chassis.getLinearVelocity().x) < STUCK_VELOCITY_THRESHOLD) {
+      this.health -= STUCK_HEALTH_PENALTY;
     }
 
     return this.health <= 0;

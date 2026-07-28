@@ -15,6 +15,7 @@ import {
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
   GRAVITY_Y,
+  MAX_GENERATION_FRAMES,
   MAX_CAR_HEALTH,
   POSITION_ITERATIONS,
   TILE_FRICTION,
@@ -182,6 +183,14 @@ export class Simulation {
     }
 
     this.recordFrame();
+
+    // Retire anyone still going at the time limit, so one slow survivor cannot
+    // hold the generation open indefinitely.
+    if (this.frame >= MAX_GENERATION_FRAMES) {
+      for (const car of this.cars) {
+        if (car.alive) this.killCar(car);
+      }
+    }
 
     if (this.aliveCount <= 0) {
       this.endGeneration();

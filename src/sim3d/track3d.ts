@@ -25,6 +25,16 @@ export interface Track3D {
   /** The shared 2D profile: hills, surface polyline, bounds. */
   profile: TrackDef;
   segments: RoadSegment[];
+  /**
+   * Bank angle at each joint between tiles, one more entry than there are
+   * tiles.
+   *
+   * Banking is defined at the joints rather than per tile so that neighbouring
+   * tiles agree on the roll where they meet. Giving each tile its own constant
+   * bank left the road twisting instantly at every joint, which opened real
+   * gaps along the edges and made the surface impossible to draw as one piece.
+   */
+  joints: number[];
   halfWidth: number;
 }
 
@@ -34,9 +44,14 @@ export function generateTrack3D(seed: string): Track3D {
   const rng = rngFromSeed(`${seed}:bank`);
   const count = profile.tiles.length;
 
+  const joints: number[] = [];
+  for (let j = 0; j <= count; j++) {
+    const raw = (rng() * 2 - 1) * ROAD_BANK_GAIN * (j / count);
+    joints.push(Math.max(-MAX_ROAD_BANK, Math.min(MAX_ROAD_BANK, raw)));
+  }
+
   const segments = profile.tiles.map((tile, k) => {
     const [a, b, c, d] = tile.vertices;
-    const raw = (rng() * 2 - 1) * ROAD_BANK_GAIN * (k / count);
     return {
       center: {
         x: (a.x + b.x + c.x + d.x) / 4,
@@ -44,11 +59,32 @@ export function generateTrack3D(seed: string): Track3D {
         z: 0,
       },
       pitch: Math.atan2(b.y - a.y, b.x - a.x),
-      bank: Math.max(-MAX_ROAD_BANK, Math.min(MAX_ROAD_BANK, raw)),
+      // The collider takes the average of the joints it spans, so it sits in
+      // the middle of the surface the renderer draws.
+      bank: (joints[k]! + joints[k + 1]!) / 2,
     };
   });
 
-  return { seed, profile, segments, halfWidth: ROAD_HALF_WIDTH };
+  return { seed, profile, segments, joints, halfWidth: ROAD_HALF_WIDTH };
+}
+
+/** Orientation of the road surface at a joint between tiles. */
+export function jointRotation(track: Track3D, joint: number): {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+} {
+  const tiles = track.profile.tiles;
+  // Average the pitch either side so the surface does not kink at the joint.
+  const before = tiles[Math.max(0, joint - 1)]!;
+  const after = tiles[Math.min(tiles.length - 1, joint)]!;
+  const pitchOf = (tile: (typeof tiles)[number]) => {
+    const [a, b] = tile.vertices;
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  };
+  const pitch = (pitchOf(before) + pitchOf(after)) / 2;
+  return segmentRotation({ center: { x: 0, y: 0, z: 0 }, pitch, bank: track.joints[joint]! });
 }
 
 /**

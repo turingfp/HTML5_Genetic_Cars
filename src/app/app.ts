@@ -71,8 +71,15 @@ export class App {
   private banner: HTMLElement;
 
   private snapshot: WorldSnapshot = createSnapshot();
-  private history: GenerationStats[] = [];
-  private hallOfFame: HallOfFameEntry[] = [];
+  /**
+   * Records are kept per mode. The two modes are different problems with
+   * different score scales, so sharing a leaderboard let a 2D run stand as the
+   * 3D record — and the chart restarted every time you switched.
+   */
+  private records: Record<Mode, { history: GenerationStats[]; hall: HallOfFameEntry[]; best: number }> = {
+    '2d': { history: [], hall: [], best: 0 },
+    '3d': { history: [], hall: [], best: 0 },
+  };
 
   /**
    * The 3D mode runs on Box3D, which has to compile WebAssembly first, so it
@@ -88,7 +95,6 @@ export class App {
   private cameraTarget = -1;
   private replaying = false;
   private lastDrawTime = performance.now();
-  private bestEver = 0;
 
   constructor() {
     const stored = loadSettings();
@@ -117,10 +123,13 @@ export class App {
     this.banner = element('banner');
 
     this.renderer.camera.setZoom(stored.zoom ?? this.renderer.camera.fitZoom());
-    this.hallOfFame = loadHallOfFame();
-    this.bestEver = this.hallOfFame[0]?.score ?? 0;
-    this.leaderboard.render(this.hallOfFame);
-    this.chart.draw(this.history);
+    for (const mode of ['2d', '3d'] as const) {
+      const hall = loadHallOfFame(mode);
+      this.records[mode].hall = hall;
+      this.records[mode].best = hall[0]?.score ?? 0;
+    }
+    this.leaderboard.render(this.current.hall);
+    this.chart.draw(this.current.history);
 
     this.panel = new Panel({
       onSpeed: (speed) => this.setSpeed(speed),
@@ -316,9 +325,11 @@ export class App {
     this.readouts.set('generation', String(snapshot.generation));
     this.readouts.set('alive', `${snapshot.aliveCount}/${snapshot.cars.length}`);
     this.readouts.set('distance', `${snapshot.bestX.toFixed(1)}m`);
-    // The ghost holds the best run on this track, including the one in progress,
-    // so the headline number moves as soon as a record is set.
-    this.readouts.set('best', Math.max(this.bestEver, this.ghost.score, 0).toFixed(1));
+    // In the flat mode the ghost holds the best run on this track, including
+    // one still in progress, so the headline moves the moment a record is set.
+    // The 3D mode has no ghost, so it reports its own recorded best.
+    const live = this.mode === '2d' ? this.ghost.score : -Infinity;
+    this.readouts.set('best', Math.max(this.current.best, live, 0).toFixed(1));
     this.readouts.set('sps', String(this.loop.stepsPerSecond));
 
     if (this.replaying) {
@@ -340,13 +351,13 @@ export class App {
     const sorted = scores.slice().sort((a, b) => b.score - a.score);
     const half = Math.max(1, Math.ceil(sorted.length / 2));
 
-    this.history.push({
+    this.current.history.push({
       generation,
       best: sorted[0]!.score,
       eliteAverage: sorted.slice(0, half).reduce((a, s) => a + s.score, 0) / half,
       average: sorted.reduce((a, s) => a + s.score, 0) / sorted.length,
     });
-    this.chart.draw(this.history);
+    this.chart.draw(this.current.history);
 
     // One entry per generation, so the board tracks progress rather than
     // filling up with every incremental record inside a single round.
@@ -363,7 +374,8 @@ export class App {
     // A 3D car carries its silhouette inside `base`; the board and its
     // thumbnails only ever deal in silhouettes.
     const def = 'base' in best.def ? best.def.base : best.def;
-    this.hallOfFame.push({
+    const record = this.current;
+    record.hall.push({
       def: structuredClone(def),
       score: best.score,
       distance: best.distance,
@@ -371,18 +383,23 @@ export class App {
       trackSeed: this.sim.trackSeed,
       recordedAt: Date.now(),
     });
-    this.hallOfFame.sort((a, b) => b.score - a.score);
-    this.hallOfFame = this.hallOfFame.slice(0, TOP_SCORE_COUNT);
-    this.bestEver = Math.max(this.bestEver, best.score);
-    this.leaderboard.render(this.hallOfFame);
-    saveHallOfFame(this.hallOfFame);
+    record.hall.sort((a, b) => b.score - a.score);
+    record.hall = record.hall.slice(0, TOP_SCORE_COUNT);
+    record.best = Math.max(record.best, best.score);
+    this.leaderboard.render(record.hall);
+    saveHallOfFame(this.mode, record.hall);
   }
 
   private clearHallOfFame(): void {
-    this.hallOfFame = [];
-    this.bestEver = 0;
-    this.leaderboard.render(this.hallOfFame);
-    saveHallOfFame(this.hallOfFame);
+    this.current.hall = [];
+    this.current.best = 0;
+    this.leaderboard.render(this.current.hall);
+    saveHallOfFame(this.mode, this.current.hall);
+  }
+
+  /** Records belonging to whichever mode is on screen. */
+  private get current() {
+    return this.records[this.mode];
   }
 
   private exportCar(entry: HallOfFameEntry): void {
@@ -450,8 +467,9 @@ export class App {
       this.renderer3d?.clearHistory();
     } else this.sim.resetPopulation();
 
-    this.history = [];
-    this.chart.draw(this.history);
+    // Only this mode's chart restarts; the other mode's run is untouched.
+    this.current.history = [];
+    this.chart.draw(this.current.history);
     this.ghost.clear();
     this.minimap.exploredX = 0;
     this.replaying = false;
@@ -466,8 +484,10 @@ export class App {
     this.sim3d?.setTrack(seed);
     // Deaths were recorded against the old course and mean nothing on this one.
     this.renderer3d?.clearHistory();
-    this.history = [];
-    this.chart.draw(this.history);
+    // A new course invalidates both modes' progress charts.
+    this.records['2d'].history = [];
+    this.records['3d'].history = [];
+    this.chart.draw(this.current.history);
     this.ghost.clear();
     this.minimap.exploredX = 0;
     this.replaying = false;
@@ -539,8 +559,7 @@ export class App {
       view3d.hidden = false;
       element('view3d-controls').hidden = false;
       this.mode = '3d';
-      this.history = [];
-      this.chart.draw(this.history);
+      this.showRecords();
       this.minimap.exploredX = 0;
       this.sim3d.snapshot(this.snapshot3d);
       this.renderer3d?.snapTo(
@@ -553,14 +572,19 @@ export class App {
       view2d.hidden = false;
       element('view3d-controls').hidden = true;
       this.mode = '2d';
-      this.history = [];
-      this.chart.draw(this.history);
+      this.showRecords();
       this.minimap.exploredX = 0;
       this.renderer.camera.resize();
       this.snapCameraToLeader();
     }
 
     this.loop.resetClock();
+  }
+
+  /** Show the chart and leaderboard belonging to the mode now on screen. */
+  private showRecords(): void {
+    this.chart.draw(this.current.history);
+    this.leaderboard.render(this.current.hall);
   }
 
   private snapCameraToLeader(): void {
@@ -615,7 +639,7 @@ export class App {
       speed: this.loop.speed,
       seed: this.sim.trackSeed,
       replaying: this.replaying,
-      hallOfFame: this.hallOfFame.length,
+      hallOfFame: this.current.hall.length,
       timeStep: TIME_STEP,
       // Cheap fingerprint of the terrain, so tests can assert that a seed
       // rebuilds the same course without comparing rendered pixels.

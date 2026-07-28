@@ -15,10 +15,10 @@ import {
   CHASSIS_RESTITUTION,
   CHASSIS_VERTEX_COUNT,
   GRAVITY_Y,
+  HEALTH_PER_METRE,
   MAX_CAR_HEALTH,
   MOTOR_SPEED,
   PHYSICS_HZ,
-  PROGRESS_EPSILON,
   STUCK_HEALTH_PENALTY,
   STUCK_VELOCITY_THRESHOLD,
   WHEEL_FRICTION,
@@ -126,15 +126,16 @@ export class Car {
     if (position.y > this.maxY) this.maxY = position.y;
     if (position.y < this.minY) this.minY = position.y;
 
-    if (position.x > this.maxX + PROGRESS_EPSILON) {
-      // Making real progress buys a full tank of health back.
-      this.health = MAX_CAR_HEALTH;
+    // New ground earns health in proportion to how much was gained, so a car
+    // has to keep up a minimum speed rather than merely inch forward.
+    if (position.x > this.maxX) {
+      this.health = Math.min(MAX_CAR_HEALTH, this.health + (position.x - this.maxX) * HEALTH_PER_METRE);
       this.maxX = position.x;
-    } else {
-      this.health--;
-      if (Math.abs(chassis.getLinearVelocity().x) < STUCK_VELOCITY_THRESHOLD) {
-        this.health -= STUCK_HEALTH_PENALTY;
-      }
+    }
+
+    this.health--;
+    if (Math.abs(chassis.getLinearVelocity().x) < STUCK_VELOCITY_THRESHOLD) {
+      this.health -= STUCK_HEALTH_PENALTY;
     }
 
     return this.health <= 0;

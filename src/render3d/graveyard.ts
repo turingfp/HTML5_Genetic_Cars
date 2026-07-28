@@ -32,9 +32,14 @@ export interface Death {
 
 const MAX_MARKERS = 8000;
 
-/** Oldest generations fade to cold blue; the newest burn yellow-white. */
-const OLD = new Color(0x1d4ed8);
-const MID = new Color(0xc026d3);
+/**
+ * The newest generation burns yellow; older ones sink toward a dark, cold blue
+ * that recedes into the road. Old markers were previously as vivid as new ones,
+ * so a long run turned into an undifferentiated field of colour instead of
+ * showing where the search has actually reached.
+ */
+const OLD = new Color(0x16233c);
+const MID = new Color(0x6d28d9);
 const NEW = new Color(0xfde047);
 
 export class Graveyard {
@@ -47,9 +52,13 @@ export class Graveyard {
 
   constructor() {
     // A dropped pin: cheap, reads clearly at any angle, points at the ground.
-    const geometry = new ConeGeometry(0.16, 0.5, 5);
+    //
+    // Deliberately small. At full size a hundred generations of markers buried
+    // the road and the cars entirely; the field has to read as a texture of
+    // where the population keeps failing, not as scenery in its own right.
+    const geometry = new ConeGeometry(0.075, 0.26, 5);
     geometry.rotateX(Math.PI);
-    const material = new MeshBasicMaterial({ transparent: true, opacity: 0.85 });
+    const material = new MeshBasicMaterial({ transparent: true, opacity: 0.6 });
 
     this.mesh = new InstancedMesh(geometry, material, MAX_MARKERS);
     this.mesh.count = 0;
@@ -70,7 +79,7 @@ export class Graveyard {
     const index = this.deaths.length;
     this.deaths.push(death);
 
-    this.dummy.position.set(death.x, death.y + 0.45, death.z);
+    this.dummy.position.set(death.x, death.y + 0.2, death.z);
     // Cars that fell off the road get a tilted marker, so a glance separates
     // "ground to a halt" from "went over the edge".
     this.dummy.rotation.set(death.fellOff ? 0.9 : 0, index * 0.7, 0);
@@ -114,7 +123,7 @@ export class Graveyard {
     const quaternion = new Quaternion();
     const scale = new Vector3(1, 1, 1);
     this.deaths.forEach((death, i) => {
-      position.set(death.x, death.y + 0.45, death.z);
+      position.set(death.x, death.y + 0.2, death.z);
       quaternion.setFromEuler(this.dummy.rotation.set(death.fellOff ? 0.9 : 0, i * 0.7, 0));
       matrix.compose(position, quaternion, scale);
       this.mesh.setMatrixAt(i, matrix);

@@ -1,0 +1,542 @@
+/* Design tokens. The simulation renders on a dark canvas, so the interface is
+   built dark-first; the light theme keeps the same hues at higher lightness. */
+:root {
+  color-scheme: dark;
+
+  --bg: #070b14;
+  --surface: #0f172a;
+  --surface-raised: #16233c;
+  --border: #1e293b;
+  --border-strong: #334155;
+
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+  --elite: #60a5fa;
+  --leader: #fde047;
+  --normal: #f87171;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 10px 30px rgb(0 0 0 / 45%);
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* The simulation canvas is a night scene with its own fixed palette, so the
+   interface stays dark in both themes rather than framing it in white. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+
+.app {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(12px, 2vw, 28px);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas:
+    "header header"
+    "stage controls"
+    "map controls"
+    "chart stats"
+    "hall stats"
+    "about about";
+}
+
+.app-header {
+  grid-area: header;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.stage {
+  grid-area: stage;
+  position: relative;
+  min-height: 0;
+}
+
+.controls-panel {
+  grid-area: controls;
+  align-self: start;
+}
+.stats-panel {
+  grid-area: stats;
+  align-self: start;
+}
+.map-panel {
+  grid-area: map;
+}
+.chart-panel {
+  grid-area: chart;
+}
+.hall-panel {
+  grid-area: hall;
+}
+.about-panel {
+  grid-area: about;
+}
+
+@media (max-width: 980px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "header"
+      "stage"
+      "controls"
+      "map"
+      "stats"
+      "chart"
+      "hall"
+      "about";
+  }
+}
+
+/* ── Surfaces ───────────────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.tagline {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.seed-chip {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.seed-chip code {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+/* ── Stage ──────────────────────────────────────────────────────────────── */
+
+#view,
+#view3d {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 52vh, 620px);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: #0b1120;
+  box-shadow: var(--shadow);
+  touch-action: none;
+}
+
+#view[hidden],
+#view3d[hidden] {
+  display: none;
+}
+
+.mode-switch {
+  flex: 0 0 auto;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toggle span {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+#view3d-controls[hidden] {
+  display: none;
+}
+
+.mode-switch button {
+  min-width: 44px;
+  font-weight: 600;
+}
+
+.hud {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.hud-item {
+  background: rgb(8 12 22 / 68%);
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  min-width: 74px;
+  backdrop-filter: blur(6px);
+}
+
+.hud-label {
+  display: block;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #94a3b8;
+}
+
+.hud-value {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-banner {
+  position: absolute;
+  inset: auto 12px 12px 12px;
+  background: rgb(8 12 22 / 82%);
+  border: 1px solid rgb(148 163 184 / 22%);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  text-align: center;
+  backdrop-filter: blur(6px);
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+
+.speed-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.segmented {
+  display: flex;
+  flex: 1;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 3px;
+}
+
+.segmented button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 6px 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent-strong);
+  color: #04121f;
+  font-weight: 600;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 60ms ease;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.primary-button {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #04121f;
+  font-weight: 600;
+  min-width: 84px;
+}
+
+.ghost-button {
+  background: transparent;
+}
+
+.ghost-button.small {
+  font-size: 0.75rem;
+  padding: 5px 10px;
+  justify-self: start;
+}
+
+.control {
+  display: grid;
+  gap: 5px;
+}
+
+.control label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.control output {
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+input[type="text"] {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 8px 10px;
+}
+
+.seed-row {
+  display: flex;
+  gap: 6px;
+}
+
+.seed-row button {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+}
+
+.button-stack {
+  display: grid;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Canvases in panels ─────────────────────────────────────────────────── */
+
+#health {
+  width: 100%;
+  height: 260px;
+  display: block;
+}
+
+#minimap {
+  width: 100%;
+  height: 96px;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+#chart {
+  width: 100%;
+  height: 190px;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+/* ── Hall of fame ───────────────────────────────────────────────────────── */
+
+.leaderboard-list {
+  list-style: none;
+  counter-reset: rank;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.leaderboard-list li {
+  counter-increment: rank;
+  display: grid;
+  grid-template-columns: 18px 44px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.leaderboard-list li::before {
+  content: counter(rank);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  text-align: right;
+}
+
+.thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  background: rgb(11 17 32 / 70%);
+}
+
+.entry-text {
+  display: grid;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.entry-text strong {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-text span {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.entry-button {
+  padding: 4px 9px;
+  font-size: 0.8rem;
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 0.82rem;
+}
+
+/* ── About ──────────────────────────────────────────────────────────────── */
+
+.about-panel summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.about-panel p {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  max-width: 72ch;
+}
+
+.credits {
+  font-size: 0.8rem !important;
+  color: var(--text-faint) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

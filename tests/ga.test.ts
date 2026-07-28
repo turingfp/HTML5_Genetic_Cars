@@ -20,21 +20,48 @@ function withinAxisBounds(value: number): boolean {
   return m === 0 || (m >= CHASSIS_AXIS_MIN - EPS && m < CHASSIS_AXIS_MIN + CHASSIS_AXIS_RANGE + EPS);
 }
 
-function expectValidCar(def: CarDef): void {
+/**
+ * Describe what is wrong with a genome, or null if it is valid.
+ *
+ * Returning a description rather than asserting matters in the loops below:
+ * they check tens of thousands of genomes, and an `expect` per field would
+ * spend all its time in the assertion library rather than in the code under
+ * test. One assertion at the end is both faster and reports the first real
+ * problem instead of an opaque timeout.
+ */
+function genomeViolation(def: CarDef): string | null {
   for (const i of [0, 1] as const) {
-    expect(def.wheelRadius[i]).toBeGreaterThanOrEqual(WHEEL_RADIUS_MIN - EPS);
-    expect(def.wheelRadius[i]).toBeLessThan(WHEEL_RADIUS_MIN + WHEEL_RADIUS_RANGE + EPS);
-    expect(def.wheelDensity[i]).toBeGreaterThanOrEqual(WHEEL_DENSITY_MIN - EPS);
-    expect(def.wheelDensity[i]).toBeLessThan(WHEEL_DENSITY_MIN + WHEEL_DENSITY_RANGE + EPS);
-    expect(def.wheelVertex[i]).toBeGreaterThanOrEqual(0);
-    expect(def.wheelVertex[i]).toBeLessThan(CHASSIS_VERTEX_COUNT);
+    const radius = def.wheelRadius[i];
+    if (!(radius >= WHEEL_RADIUS_MIN - EPS && radius < WHEEL_RADIUS_MIN + WHEEL_RADIUS_RANGE + EPS)) {
+      return `wheelRadius[${i}] out of range: ${radius}`;
+    }
+    const density = def.wheelDensity[i];
+    if (
+      !(density >= WHEEL_DENSITY_MIN - EPS && density < WHEEL_DENSITY_MIN + WHEEL_DENSITY_RANGE + EPS)
+    ) {
+      return `wheelDensity[${i}] out of range: ${density}`;
+    }
+    const vertex = def.wheelVertex[i];
+    if (!(Number.isInteger(vertex) && vertex >= 0 && vertex < CHASSIS_VERTEX_COUNT)) {
+      return `wheelVertex[${i}] out of range: ${vertex}`;
+    }
   }
-  expect(def.wheelVertex[0]).not.toBe(def.wheelVertex[1]);
-  expect(def.vertices).toHaveLength(CHASSIS_VERTEX_COUNT);
-  for (const v of def.vertices) {
-    expect(withinAxisBounds(v.x)).toBe(true);
-    expect(withinAxisBounds(v.y)).toBe(true);
+  if (def.wheelVertex[0] === def.wheelVertex[1]) {
+    return `both wheels on vertex ${def.wheelVertex[0]}`;
   }
+  if (def.vertices.length !== CHASSIS_VERTEX_COUNT) {
+    return `expected ${CHASSIS_VERTEX_COUNT} vertices, got ${def.vertices.length}`;
+  }
+  for (let i = 0; i < def.vertices.length; i++) {
+    const v = def.vertices[i]!;
+    if (!withinAxisBounds(v.x)) return `vertex ${i} x out of range: ${v.x}`;
+    if (!withinAxisBounds(v.y)) return `vertex ${i} y out of range: ${v.y}`;
+  }
+  return null;
+}
+
+function expectValidCar(def: CarDef): void {
+  expect(genomeViolation(def)).toBeNull();
 }
 
 describe('rng', () => {
@@ -89,10 +116,13 @@ describe('mutate', () => {
   it('keeps every gene in bounds and wheels on distinct vertices', () => {
     const rng = rngFromSeed('mutations');
     let def = randomCar(rng);
-    for (let i = 0; i < 10_000; i++) {
+    let violation: string | null = null;
+    for (let i = 0; i < 10_000 && !violation; i++) {
       def = mutate(rng, def, { rate: 0.5, size: rng() });
-      expectValidCar(def);
+      const bad = genomeViolation(def);
+      if (bad) violation = `after ${i} mutations: ${bad}`;
     }
+    expect(violation).toBeNull();
   });
 
   it('leaves genomes untouched at rate 0', () => {
@@ -125,7 +155,7 @@ describe('crossover', () => {
       const a = randomCar(rng);
       const b = randomCar(rng);
       const child = crossover(rng, a, b);
-      expectValidCar({ ...child, wheelVertex: [0, 1] }); // vertices checked below
+      expect(genomeViolation(child)).toBeNull();
       for (const k of [0, 1] as const) {
         expect([a.wheelRadius[k], b.wheelRadius[k]]).toContain(child.wheelRadius[k]);
         expect([a.wheelDensity[k], b.wheelDensity[k]]).toContain(child.wheelDensity[k]);
@@ -179,11 +209,16 @@ describe('selection', () => {
 
   it('always returns an in-range index', () => {
     const rng = rngFromSeed('range');
+    let min = Infinity;
+    let max = -Infinity;
+    let allIntegers = true;
     for (let i = 0; i < 50_000; i++) {
       const idx = pickParentIndex(rng, 20);
-      expect(idx).toBeGreaterThanOrEqual(0);
-      expect(idx).toBeLessThan(20);
+      if (idx < min) min = idx;
+      if (idx > max) max = idx;
+      if (!Number.isInteger(idx)) allIntegers = false;
     }
+    expect({ min, max, allIntegers }).toEqual({ min: 0, max: 19, allIntegers: true });
   });
 });
 

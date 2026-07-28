@@ -39,14 +39,21 @@ describe('3D genome', () => {
   it('breeds and mutates within bounds', () => {
     const rng = rngFromSeed('breed3d');
     let def = randomCar3D(rng);
-    for (let i = 0; i < 2000; i++) {
+    // Collect rather than assert per iteration: an expect per field over
+    // thousands of genomes costs far more than the code being exercised.
+    let violation: string | null = null;
+    for (let i = 0; i < 2000 && !violation; i++) {
       const other = randomCar3D(rng);
       def = car3DOps.mutate(rng, car3DOps.crossover(rng, def, other), { rate: 0.4, size: rng() });
-      expect(def.halfWidth).toBeGreaterThan(0);
-      expect(def.wheelGap).toBeGreaterThan(0);
-      expect(def.base.wheelVertex[0]).not.toBe(def.base.wheelVertex[1]);
-      expect(chassisHullPoints(def)).toHaveLength(16);
+      if (!(def.halfWidth > 0)) violation = `halfWidth ${def.halfWidth} at ${i}`;
+      else if (!(def.wheelGap > 0)) violation = `wheelGap ${def.wheelGap} at ${i}`;
+      else if (def.base.wheelVertex[0] === def.base.wheelVertex[1]) {
+        violation = `both wheels on vertex ${def.base.wheelVertex[0]} at ${i}`;
+      } else if (chassisHullPoints(def).length !== 16) {
+        violation = `hull had ${chassisHullPoints(def).length} points at ${i}`;
+      }
     }
+    expect(violation).toBeNull();
   });
 
   it('clones deeply, so elites are not disturbed by their children', () => {

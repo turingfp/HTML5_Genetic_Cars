@@ -12,5 +12,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // The suite runs real physics; CI runners are slower and more variable
+    // than a dev machine. Generous enough to absorb that, short enough that a
+    // genuinely hung test still fails quickly.
+    testTimeout: 15_000,
   },
 });

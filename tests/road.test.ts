@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ROAD_HALF_WIDTH, TRACK_TILE_COUNT } from '../src/config';
 import { buildRoadGeometry } from '../src/render3d/road';
-import { generateTrack3D } from '../src/sim3d/track3d';
+import { generateTrack3D, roadCrossSections } from '../src/sim3d/track3d';
 
 function positionsOf(seed: string) {
   const track = generateTrack3D(seed);
@@ -129,6 +129,40 @@ describe('road geometry', () => {
     }
     // All three strips over the opening stretch.
     expect(checked).toBeGreaterThan(gentle * 5);
+  });
+
+  it('banks gradually enough to drive', () => {
+    // Independent random bank at every joint twisted the road violently every
+    // 1.5 metres. It now wanders, so neighbours stay close.
+    const track = generateTrack3D('camber');
+    for (let j = 1; j < track.joints.length; j++) {
+      expect(Math.abs(track.joints[j]! - track.joints[j - 1]!)).toBeLessThanOrEqual(0.061);
+    }
+    // But it still banks meaningfully by the end of the course.
+    expect(Math.max(...track.joints.map(Math.abs))).toBeGreaterThan(0.1);
+  });
+
+  it('places the surface where the colliders are', () => {
+    // The drawn ribbon and the physics slabs are built from one set of
+    // cross-sections. When they were derived separately — the colliders taking
+    // a per-tile average of the joint banks — the physical surface sat up to
+    // 1.7 metres from the visible one at the road edges.
+    for (const seed of ['ridge', 'alpha', 'showcase']) {
+      const track = generateTrack3D(seed);
+      const sections = roadCrossSections(track);
+      expect(sections).toHaveLength(TRACK_TILE_COUNT + 1);
+
+      const { position } = positionsOf(seed);
+      for (let j = 0; j < sections.length; j++) {
+        const left = j * 2;
+        expect(position.getX(left)).toBeCloseTo(sections[j]!.left[0], 4);
+        expect(position.getY(left)).toBeCloseTo(sections[j]!.left[1], 4);
+        expect(position.getZ(left)).toBeCloseTo(sections[j]!.left[2], 4);
+        expect(position.getX(left + 1)).toBeCloseTo(sections[j]!.right[0], 4);
+        expect(position.getY(left + 1)).toBeCloseTo(sections[j]!.right[1], 4);
+        expect(position.getZ(left + 1)).toBeCloseTo(sections[j]!.right[2], 4);
+      }
+    }
   });
 
   it('joins consecutive cross-sections without gaps', () => {

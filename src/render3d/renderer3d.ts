@@ -66,6 +66,15 @@ export class Renderer3D {
   private observer: ResizeObserver | null = null;
   private sun: DirectionalLight;
 
+  // Identical for every car and every generation, so built once and shared
+  // rather than recreated each time a generation is born.
+  private readonly wheelMaterial = new MeshStandardMaterial({
+    color: 0x11161f,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+  private readonly hubMaterial = new MeshBasicMaterial({ color: 0xcbd5e1 });
+
   private controls: OrbitControls;
   readonly graveyard = new Graveyard();
   readonly trails = new Trails();
@@ -136,6 +145,8 @@ export class Renderer3D {
     this.observer?.disconnect();
     this.observer = null;
     this.clearCars();
+    this.wheelMaterial.dispose();
+    this.hubMaterial.dispose();
     this.road?.geometry.dispose();
     this.graveyard.dispose();
     this.trails.dispose();
@@ -209,12 +220,23 @@ export class Renderer3D {
     this.roadSeed = track.seed;
   }
 
+  /**
+   * Release a generation's meshes.
+   *
+   * Traverses rather than touching the top-level meshes only: each wheel also
+   * carries a hub and a marker as children, and disposing just the wheel left
+   * eight geometries per car behind on the GPU every generation.
+   */
   private clearCars(): void {
     for (const car of this.cars) {
       this.scene.remove(car.group);
-      car.chassis.geometry.dispose();
+      car.group.traverse((object) => {
+        const mesh = object as Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+      });
+      // Only the body material is per-car; the wheel and hub materials are
+      // shared for the renderer's lifetime and disposed with it.
       car.material.dispose();
-      for (const wheel of car.wheels) wheel.geometry.dispose();
     }
     this.cars = [];
   }
@@ -222,12 +244,7 @@ export class Renderer3D {
   private buildCars(defs: (Car3DDef | null)[]): void {
     this.clearCars();
 
-    const wheelMaterial = new MeshStandardMaterial({
-      color: 0x11161f,
-      roughness: 0.85,
-      metalness: 0.05,
-    });
-    const hubMaterial = new MeshBasicMaterial({ color: 0xcbd5e1 });
+    const { wheelMaterial, hubMaterial } = this;
 
     for (const def of defs) {
       const group = new Group();

@@ -205,3 +205,6 @@ export const MAX_STEPS_PER_FRAME = 8;
 
 /** How many entries the leaderboard keeps. */
 export const TOP_SCORE_COUNT = 10;
+
+/** Thickness of the road slab colliders, below the drawn surface. */
+export const ROAD_THICKNESS = 0.6;

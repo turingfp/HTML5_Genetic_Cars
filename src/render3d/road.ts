@@ -16,69 +16,15 @@
 
 import { BufferAttribute, BufferGeometry } from 'three';
 
-import { jointRotation, type Track3D } from '../sim3d/track3d';
+import { roadCrossSections, type Track3D } from '../sim3d/track3d';
 
 type Vec3 = [number, number, number];
-
-/** Rotate a local offset by a quaternion: v + 2w(qv × v) + 2qv × (qv × v). */
-function rotate(q: { x: number; y: number; z: number; w: number }, x: number, y: number, z: number): Vec3 {
-  const tx = 2 * (q.y * z - q.z * y);
-  const ty = 2 * (q.z * x - q.x * z);
-  const tz = 2 * (q.x * y - q.y * x);
-  return [
-    x + q.w * tx + (q.y * tz - q.z * ty),
-    y + q.w * ty + (q.z * tx - q.x * tz),
-    z + q.w * tz + (q.x * ty - q.y * tx),
-  ];
-}
-
-function normalize(v: Vec3): Vec3 {
-  const len = Math.hypot(v[0], v[1], v[2]) || 1;
-  return [v[0] / len, v[1] / len, v[2] / len];
-}
-
-interface CrossSection {
-  left: Vec3;
-  right: Vec3;
-  /** Road surface normal. */
-  up: Vec3;
-  /** Unit vector from the left edge toward the right edge. */
-  across: Vec3;
-}
-
-/**
- * Sample the road surface once per joint.
- *
- * Each joint is a point on the 2D profile's surface polyline — the exact place
- * where two tiles meet — so consecutive cross-sections share their position and
- * their bank, and the ribbon between them is continuous.
- */
-function crossSections(track: Track3D): CrossSection[] {
-  const half = track.halfWidth;
-  const surface = track.profile.surface;
-  const sections: CrossSection[] = [];
-
-  for (let j = 0; j < surface.length; j++) {
-    const q = jointRotation(track, j);
-    const c = surface[j]!;
-    const offset = rotate(q, 0, 0, half);
-    const left: Vec3 = [c.x - offset[0], c.y - offset[1], -offset[2]];
-    const right: Vec3 = [c.x + offset[0], c.y + offset[1], offset[2]];
-    sections.push({
-      left,
-      right,
-      up: normalize(rotate(q, 0, 1, 0)),
-      across: normalize([right[0] - left[0], right[1] - left[1], right[2] - left[2]]),
-    });
-  }
-  return sections;
-}
 
 /** How far the side walls hang below the road edge. */
 const SKIRT = 1.4;
 
 export function buildRoadGeometry(track: Track3D): BufferGeometry {
-  const sections = crossSections(track);
+  const sections = roadCrossSections(track);
   const count = sections.length;
 
   // Three strips, each with its own vertices: top, left wall, right wall.

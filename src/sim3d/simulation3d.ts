@@ -14,10 +14,9 @@ import {
   GRAVITY_Y,
   MAX_GENERATION_FRAMES,
   MAX_CAR_HEALTH,
-  ROAD_HALF_WIDTH,
+  ROAD_THICKNESS,
   SUB_STEP_COUNT,
-  TILE_HEIGHT,
-  TILE_WIDTH,
+  TILE_FRICTION,
   TIME_STEP,
 } from '../config';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
@@ -30,7 +29,7 @@ import {
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
 import { surfaceIndexAt } from '../sim/track';
-import { generateTrack3D, segmentRotation, type Track3D } from './track3d';
+import { generateTrack3D, roadCrossSections, type Track3D } from './track3d';
 import { Car3D } from './car3d';
 import type { Box3DBody, Box3DWorld, Vec3 } from './box3d';
 import { loadBox3D } from './box3d';
@@ -92,20 +91,51 @@ export class Simulation3D {
     return this.track.seed;
   }
 
+  /**
+   * One collider per segment, shaped from the same cross-sections the renderer
+   * draws.
+   *
+   * Boxes were used at first, each taking the average of the banks at the two
+   * joints it spans. That put the physical surface as much as 1.7 metres from
+   * the visible one at the road edges, so cars struck invisible seams and sank
+   * into the drawn road. Building both from `roadCrossSections` means they
+   * cannot drift apart.
+   */
   private buildRoad(): void {
     for (const body of this.roadBodies) body.destroy();
     this.roadBodies = [];
 
-    for (const segment of this.track.segments) {
-      const body = this.world.createBody({
-        type: 'static',
-        position: segment.center,
-        rotation: segmentRotation(segment),
-      });
-      body.createBox({
-        halfExtents: { x: TILE_WIDTH / 2, y: TILE_HEIGHT / 2, z: ROAD_HALF_WIDTH },
-        friction: 0.5,
-      });
+    const sections = roadCrossSections(this.track);
+
+    for (let k = 0; k + 1 < sections.length; k++) {
+      const a = sections[k]!;
+      const b = sections[k + 1]!;
+      const center = {
+        x: (a.left[0] + a.right[0] + b.left[0] + b.right[0]) / 4,
+        y: (a.left[1] + a.right[1] + b.left[1] + b.right[1]) / 4,
+        z: (a.left[2] + a.right[2] + b.left[2] + b.right[2]) / 4,
+      };
+
+      // The surface, plus the same four points pushed down along the normal to
+      // give the slab thickness. Hull points are relative to the body's origin.
+      const points: { x: number; y: number; z: number }[] = [];
+      for (const section of [a, b]) {
+        for (const edge of [section.left, section.right]) {
+          points.push({
+            x: edge[0] - center.x,
+            y: edge[1] - center.y,
+            z: edge[2] - center.z,
+          });
+          points.push({
+            x: edge[0] - section.up[0] * ROAD_THICKNESS - center.x,
+            y: edge[1] - section.up[1] * ROAD_THICKNESS - center.y,
+            z: edge[2] - section.up[2] * ROAD_THICKNESS - center.z,
+          });
+        }
+      }
+
+      const body = this.world.createBody({ type: 'static', position: center });
+      body.createHull({ points, friction: TILE_FRICTION });
       this.roadBodies.push(body);
     }
   }

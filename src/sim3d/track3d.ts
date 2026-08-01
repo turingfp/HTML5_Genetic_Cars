@@ -2,32 +2,27 @@
  * The 3D road.
  *
  * Built from the same 2D profile the flat mode uses, so a seed produces the
- * same hills either way, plus a roll angle per segment that grows with
- * distance. The banking is what makes 3D its own problem: a narrow car that
- * wins on flat ground will tip over on a camber.
+ * same hills either way, plus a camber that grows with distance. The banking is
+ * what makes 3D its own problem: a narrow car that wins on flat ground will tip
+ * over on a slope.
+ *
+ * `roadCrossSections` is the single source of truth for where the road is —
+ * both the colliders and the drawn ribbon are built from it.
  */
 
 import { MAX_ROAD_BANK, ROAD_BANK_GAIN, ROAD_HALF_WIDTH } from '../config';
-
-/** How far the camber may change from one joint to the next. */
-const BANK_STEP = 0.06;
 import { rngFromSeed } from '../core/rng';
 import { generateTrack, type TrackDef } from '../sim/track';
 
-export interface RoadSegment {
-  /** Centre of the segment box, in world space. */
-  center: { x: number; y: number; z: number };
-  /** Pitch about z, from the 2D profile. */
-  pitch: number;
-  /** Roll about the direction of travel. */
-  bank: number;
-}
+/** How far the camber may change from one joint to the next. */
+const BANK_STEP = 0.06;
+
+export type Vec3Tuple = [number, number, number];
 
 export interface Track3D {
   seed: string;
   /** The shared 2D profile: hills, surface polyline, bounds. */
   profile: TrackDef;
-  segments: RoadSegment[];
   /**
    * Bank angle at each joint between tiles, one more entry than there are
    * tiles.
@@ -60,28 +55,11 @@ export function generateTrack3D(seed: string): Track3D {
     joints.push(Math.max(-MAX_ROAD_BANK, Math.min(MAX_ROAD_BANK, bank)));
   }
 
-  const segments = profile.tiles.map((tile, k) => {
-    const [a, b, c, d] = tile.vertices;
-    return {
-      center: {
-        x: (a.x + b.x + c.x + d.x) / 4,
-        y: (a.y + b.y + c.y + d.y) / 4,
-        z: 0,
-      },
-      pitch: Math.atan2(b.y - a.y, b.x - a.x),
-      // The collider takes the average of the joints it spans, so it sits in
-      // the middle of the surface the renderer draws.
-      bank: (joints[k]! + joints[k + 1]!) / 2,
-    };
-  });
-
-  return { seed, profile, segments, joints, halfWidth: ROAD_HALF_WIDTH };
+  return { seed, profile, joints, halfWidth: ROAD_HALF_WIDTH };
 }
 
-export type Vec3Tuple = [number, number, number];
-
 /** Rotate a local offset by a quaternion: v + 2w(qv × v) + 2qv × (qv × v). */
-export function rotateByQuat(
+function rotateByQuat(
   q: { x: number; y: number; z: number; w: number },
   x: number,
   y: number,
@@ -102,6 +80,42 @@ function normalize(v: Vec3Tuple): Vec3Tuple {
   return [v[0] / len, v[1] / len, v[2] / len];
 }
 
+export interface Quaternion {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
+/**
+ * Orientation of the road surface: roll about the direction of travel first,
+ * then pitch up the hill.
+ */
+export function roadOrientation(pitch: number, bank: number): Quaternion {
+  const hp = pitch / 2;
+  const hb = bank / 2;
+  // qz (pitch about z) * qx (bank about x).
+  const zc = Math.cos(hp);
+  const zs = Math.sin(hp);
+  const xc = Math.cos(hb);
+  const xs = Math.sin(hb);
+  return { w: zc * xc, x: zc * xs, y: zs * xs, z: zs * xc };
+}
+
+/** Slope of one tile, from the shared 2D profile. */
+function tilePitch(track: Track3D, index: number): number {
+  const tiles = track.profile.tiles;
+  const [a, b] = tiles[Math.max(0, Math.min(tiles.length - 1, index))]!.vertices;
+  return Math.atan2(b.y - a.y, b.x - a.x);
+}
+
+/** Orientation of the road surface at a joint between tiles. */
+export function jointRotation(track: Track3D, joint: number): Quaternion {
+  // Average the pitch either side so the surface does not kink at the joint.
+  const pitch = (tilePitch(track, joint - 1) + tilePitch(track, joint)) / 2;
+  return roadOrientation(pitch, track.joints[joint]!);
+}
+
 /** One slice across the road surface, at a joint between two tiles. */
 export interface RoadCrossSection {
   left: Vec3Tuple;
@@ -115,10 +129,11 @@ export interface RoadCrossSection {
 /**
  * The road surface, sampled once per joint.
  *
- * The single source of truth for where the road *is*: both the colliders and
- * the drawn ribbon are built from this. They were derived separately at first,
- * with the colliders using a per-tile average of the joint banks, which left
- * the physical surface up to 1.7 metres from the visible one at the road edges.
+ * The colliders and the drawn ribbon were derived separately at first, with the
+ * colliders using a per-tile average of the joint banks. That left the physical
+ * surface up to 1.7 metres from the visible one at the road edges, so cars
+ * struck invisible seams and sank into the drawn road. Deriving both from here
+ * means they cannot drift apart.
  */
 export function roadCrossSections(track: Track3D): RoadCrossSection[] {
   const half = track.halfWidth;
@@ -139,48 +154,4 @@ export function roadCrossSections(track: Track3D): RoadCrossSection[] {
     });
   }
   return sections;
-}
-
-/** Orientation of the road surface at a joint between tiles. */
-export function jointRotation(track: Track3D, joint: number): {
-  x: number;
-  y: number;
-  z: number;
-  w: number;
-} {
-  const tiles = track.profile.tiles;
-  // Average the pitch either side so the surface does not kink at the joint.
-  const before = tiles[Math.max(0, joint - 1)]!;
-  const after = tiles[Math.min(tiles.length - 1, joint)]!;
-  const pitchOf = (tile: (typeof tiles)[number]) => {
-    const [a, b] = tile.vertices;
-    return Math.atan2(b.y - a.y, b.x - a.x);
-  };
-  const pitch = (pitchOf(before) + pitchOf(after)) / 2;
-  return segmentRotation({ center: { x: 0, y: 0, z: 0 }, pitch, bank: track.joints[joint]! });
-}
-
-/**
- * Orientation of a road segment as a quaternion: roll about the travel
- * direction first, then pitch up the hill.
- */
-export function segmentRotation(segment: RoadSegment): {
-  x: number;
-  y: number;
-  z: number;
-  w: number;
-} {
-  const hp = segment.pitch / 2;
-  const hb = segment.bank / 2;
-  // qz (pitch about z) * qx (bank about x).
-  const zc = Math.cos(hp);
-  const zs = Math.sin(hp);
-  const xc = Math.cos(hb);
-  const xs = Math.sin(hb);
-  return {
-    w: zc * xc,
-    x: zc * xs,
-    y: zs * xs,
-    z: zs * xc,
-  };
 }

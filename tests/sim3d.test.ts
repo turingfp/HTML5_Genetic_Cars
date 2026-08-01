@@ -70,10 +70,10 @@ describe('3D track', () => {
   it('shares the hill profile with the flat mode and adds banking', () => {
     const a = generateTrack3D('same-seed');
     const b = generateTrack3D('same-seed');
-    expect(a.segments).toEqual(b.segments);
+    expect(a.joints).toEqual(b.joints);
     expect(a.profile.tiles).toEqual(b.profile.tiles);
 
-    const banks = a.segments.map((s) => s.bank);
+    const banks = a.joints;
     expect(banks.some((v) => v !== 0)).toBe(true);
     // Banking grows with distance, like the pitch does.
     const early = banks.slice(0, 20).reduce((s, v) => s + Math.abs(v), 0) / 20;

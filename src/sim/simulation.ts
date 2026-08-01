@@ -16,6 +16,8 @@ import {
   DEFAULT_POPULATION_SIZE,
   GRAVITY_Y,
   MAX_GENERATION_FRAMES,
+  PROGRESS_EPSILON,
+  STALL_FRAMES,
   MAX_CAR_HEALTH,
   POSITION_ITERATIONS,
   TILE_FRICTION,
@@ -92,6 +94,9 @@ export class Simulation {
   aliveCount = 0;
   bestX = 0;
 
+  /** Frame at which the furthest point reached last moved meaningfully. */
+  private lastProgressFrame = 0;
+
   /** Scores of cars that have already died this generation. */
   private scores: CarScore[] = [];
   private trackBodies: Body[] = [];
@@ -151,6 +156,7 @@ export class Simulation {
     this.scores = [];
     this.frame = 0;
     this.bestX = 0;
+    this.lastProgressFrame = 0;
     this.recordFrame();
   }
 
@@ -178,15 +184,21 @@ export class Simulation {
     for (const car of this.cars) {
       if (!car.alive) continue;
       const died = car.update();
-      if (car.maxX > this.bestX) this.bestX = car.maxX;
+      if (car.maxX > this.bestX + PROGRESS_EPSILON) {
+        this.bestX = car.maxX;
+        this.lastProgressFrame = this.frame;
+      } else if (car.maxX > this.bestX) {
+        this.bestX = car.maxX;
+      }
       if (died) this.killCar(car);
     }
 
     this.recordFrame();
 
-    // Retire anyone still going at the time limit, so one slow survivor cannot
-    // hold the generation open indefinitely.
-    if (this.frame >= MAX_GENERATION_FRAMES) {
+    // Retire the survivors once the round is over in all but name: either the
+    // furthest point reached has stopped advancing, or the hard cap is hit.
+    const stalled = this.frame - this.lastProgressFrame >= STALL_FRAMES;
+    if (stalled || this.frame >= MAX_GENERATION_FRAMES) {
       for (const car of this.cars) {
         if (car.alive) this.killCar(car);
       }

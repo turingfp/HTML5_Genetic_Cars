@@ -7,6 +7,7 @@
  */
 
 import {
+  ACESFilmicToneMapping,
   AmbientLight,
   BackSide,
   Color,
@@ -36,7 +37,7 @@ import { wheelHalfTread } from '../sim3d/car3d';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
 import type { Track3D } from '../sim3d/track3d';
 import { Graveyard, type Death } from './graveyard';
-import { buildRoadGeometry } from './road';
+import { buildDistanceMarkers, buildRoadGeometry } from './road';
 import { Trails } from './trails';
 
 const ELITE_COLOR = 0x60a5fa;
@@ -92,6 +93,12 @@ export class Renderer3D {
     // it; without them the scene reads flat however good the geometry is.
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFSoftShadowMap;
+    // Filmic tone mapping instead of clipping raw values: the bright sunlit
+    // road no longer washes out to flat white and the shadowed sides keep
+    // their colour, which is most of the difference between "3D shapes" and
+    // "a scene".
+    this.renderer.toneMapping = ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new Scene();
     this.scene.fog = new Fog(0x0b1120, 55, 200);
@@ -215,6 +222,14 @@ export class Renderer3D {
     const mesh = new Mesh(buildRoadGeometry(track), material);
     mesh.receiveShadow = true;
 
+    // Bars every ten metres, so speed and distance are legible.
+    const markers = new Mesh(
+      buildDistanceMarkers(track),
+      new MeshBasicMaterial({ color: 0xe8f1ff, transparent: true, opacity: 0.55 }),
+    );
+    markers.frustumCulled = false;
+    mesh.add(markers);
+
     this.scene.add(mesh);
     this.road = mesh;
     this.roadSeed = track.seed;
@@ -329,8 +344,18 @@ export class Renderer3D {
         );
       }
 
-      const color = i === snapshot.leaderIndex ? LEADER_COLOR : car.isElite ? ELITE_COLOR : NORMAL_COLOR;
-      meshes.material.color.setHex(color);
+      // Every ordinary car got the same red, so a pack read as one mass. The
+      // leader and the elites keep their fixed colours; the rest are spread
+      // around the base hue so individuals can be followed by eye.
+      if (i === snapshot.leaderIndex) {
+        meshes.material.color.setHex(LEADER_COLOR);
+      } else if (car.isElite) {
+        meshes.material.color.setHex(ELITE_COLOR);
+      } else {
+        meshes.material.color.setHex(NORMAL_COLOR);
+        const spread = snapshot.cars.length > 1 ? i / (snapshot.cars.length - 1) : 0;
+        meshes.material.color.offsetHSL((spread - 0.5) * 0.18, 0, (spread - 0.5) * 0.12);
+      }
     }
 
     this.graveyard.mesh.visible = this.showGraveyard;

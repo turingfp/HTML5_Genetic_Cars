@@ -13,6 +13,8 @@ import {
   DEFAULT_POPULATION_SIZE,
   GRAVITY_Y,
   MAX_GENERATION_FRAMES,
+  PROGRESS_EPSILON,
+  STALL_FRAMES,
   MAX_CAR_HEALTH,
   ROAD_THICKNESS,
   SUB_STEP_COUNT,
@@ -54,6 +56,9 @@ export class Simulation3D {
   frame = 0;
   aliveCount = 0;
   bestX = 0;
+
+  /** Frame at which the furthest point reached last moved meaningfully. */
+  private lastProgressFrame = 0;
 
   private scores: CarScore<Car3DDef>[] = [];
   private roadBodies: Box3DBody[] = [];
@@ -153,6 +158,7 @@ export class Simulation3D {
     this.scores = [];
     this.frame = 0;
     this.bestX = 0;
+    this.lastProgressFrame = 0;
   }
 
   /** Advance one fixed step. Returns true if the generation ended. */
@@ -163,12 +169,19 @@ export class Simulation3D {
     for (const car of this.cars) {
       if (!car.alive) continue;
       const died = car.update(this.roadHeightAt(car.maxX));
-      if (car.maxX > this.bestX) this.bestX = car.maxX;
+      if (car.maxX > this.bestX + PROGRESS_EPSILON) {
+        this.bestX = car.maxX;
+        this.lastProgressFrame = this.frame;
+      } else if (car.maxX > this.bestX) {
+        this.bestX = car.maxX;
+      }
       if (died) this.killCar(car);
     }
 
-    // Retire anyone still going at the time limit, as the flat mode does.
-    if (this.frame >= MAX_GENERATION_FRAMES) {
+    // Retire the survivors once the round is over in all but name, as the flat
+    // mode does: the frontier has stopped advancing, or the hard cap is hit.
+    const stalled = this.frame - this.lastProgressFrame >= STALL_FRAMES;
+    if (stalled || this.frame >= MAX_GENERATION_FRAMES) {
       for (const car of this.cars) {
         if (car.alive) this.killCar(car);
       }

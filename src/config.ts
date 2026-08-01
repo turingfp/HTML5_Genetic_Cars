@@ -151,6 +151,22 @@ export const MIN_SUSTAINED_SPEED = PHYSICS_HZ / HEALTH_PER_METRE;
 export const MAX_GENERATION_SECONDS = 90;
 export const MAX_GENERATION_FRAMES = MAX_GENERATION_SECONDS * PHYSICS_HZ;
 
+/**
+ * End a generation once the population as a whole stops getting anywhere.
+ *
+ * The per-car speed rule only asks that each car keeps gaining its *own* new
+ * ground, which a pack of slow cars can satisfy indefinitely while the furthest
+ * point reached never moves. Measured on one track, a 3D generation ran the
+ * full 90 second cap with its last real progress at 9 seconds — eighty seconds
+ * of watching nothing happen. This ends the round shortly after the frontier
+ * stops advancing, which is the moment the round stopped being interesting.
+ */
+export const STALL_SECONDS = 6;
+export const STALL_FRAMES = STALL_SECONDS * PHYSICS_HZ;
+
+/** Progress smaller than this does not count as the frontier advancing. */
+export const PROGRESS_EPSILON = 0.05;
+
 /** Extra health drained per step while essentially motionless. */
 export const STUCK_HEALTH_PENALTY = 5;
 export const STUCK_VELOCITY_THRESHOLD = 0.001;

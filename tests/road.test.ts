@@ -44,8 +44,7 @@ function faceDot(
 describe('road geometry', () => {
   it('covers every segment with a surface of the right width', () => {
     const { track, position } = positionsOf('ribbon');
-    // Two cross-sections per segment, three strips, two vertices each.
-    expect(track.segments).toHaveLength(TRACK_TILE_COUNT);
+    expect(track.joints).toHaveLength(TRACK_TILE_COUNT + 1);
     // One cross-section per joint (one more than there are tiles), three
     // strips of two vertices each.
     expect(position.count).toBe((TRACK_TILE_COUNT + 1) * 6);

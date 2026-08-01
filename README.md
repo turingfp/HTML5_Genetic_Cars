@@ -40,6 +40,16 @@ kept separately, though — a flat car and a four-wheeled one are solving
 different problems on different scales. Box3D and three.js are only downloaded
 when you first switch to 3D.
 
+The wheels are real wheels: sixteen-sided prisms about the axle, so a tyre has a
+flat tread and a contact patch that grips. They started as capsules, which on a
+large radius are geometrically spheres — they looked wrong and behaved wrong,
+rolling sideways instead of tracking. Tread width scales with radius so a big
+wheel is still a wheel. The road is one continuous ribbon stitched from a
+cross-section per joint, drawn from the same samples the physics colliders are
+built from, and bars painted across it every ten metres give the eye something
+to measure speed against. Lighting is ACES filmic tone mapped, and each car
+takes a slightly different hue so you can follow one through the pack.
+
 Two things in the 3D view try to show the *search* rather than a single run.
 Every car leaves a marker where it died, kept across generations, so the
 clusters where the population keeps failing build up and the bright frontier of
@@ -170,6 +180,16 @@ over two centimetres refilled its health bar completely, so a single crawler
 could hold a generation open indefinitely. Health is now earned in proportion to
 ground gained, which sets a minimum sustained speed, and a generation has a hard
 time limit so one slow survivor cannot drag it out.
+
+That was not enough on its own. A car can keep clearing the per-car speed bar
+while contributing nothing — rocking against an obstacle, or trickling along
+ground the population passed generations ago — and in 3D the first generation
+still ran the full ninety-second cap with its last real progress made at nine
+seconds. So the generation now also ends when the population *as a whole* stops
+getting anywhere: six seconds with nobody beating the round's furthest point
+closes it. Wasted rounds went from ninety seconds to eleven, and four
+generations of 3D from 217 seconds to 50; rounds that are still making progress
+are untouched, which `tests/stall.test.ts` pins down.
 
 Two behavioural notes: the physics feel is close but not identical, since the
 solver differs; and track seeds are not compatible with the original, which used

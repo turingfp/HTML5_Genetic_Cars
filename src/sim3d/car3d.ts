@@ -46,7 +46,7 @@ export function wheelHalfTread(radius: number): number {
  * axle direction. Gives a flat tread that grips and a real contact patch,
  * where a capsule only ever touched the ground at one point.
  */
-export function wheelHullPoints(radius: number): { x: number; y: number; z: number }[] {
+function wheelHullPoints(radius: number): { x: number; y: number; z: number }[] {
   const halfTread = wheelHalfTread(radius);
   const points: { x: number; y: number; z: number }[] = [];
   for (let i = 0; i < WHEEL_FACETS; i++) {

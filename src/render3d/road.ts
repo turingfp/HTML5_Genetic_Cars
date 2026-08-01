@@ -1,12 +1,11 @@
 /**
  * The road as one continuous ribbon.
  *
- * The physics road is a chain of separate boxes, and drawing it that way showed
- * every joint: neighbouring slabs bank by different amounts, so their corners
- * do not meet and the surface reads as scattered planks. Here the same segments
- * are stitched into a single surface — each one contributes a cross-section at
- * its trailing and leading edge, and consecutive cross-sections are joined, so
- * a change in bank becomes a smooth twist instead of a step.
+ * The road was drawn as a slab per tile at first, and every joint showed:
+ * neighbouring slabs banked by different amounts, so their corners did not meet
+ * and the surface read as scattered planks. It is now one surface stitched from
+ * `roadCrossSections`, which samples once per joint, so a change in camber
+ * becomes a smooth twist instead of a step.
  *
  * The top surface and the two side walls are built as separate vertex sets.
  * Sharing vertices between them meant one normal had to serve a horizontal
@@ -22,6 +21,70 @@ type Vec3 = [number, number, number];
 
 /** How far the side walls hang below the road edge. */
 const SKIRT = 1.4;
+
+/** Distance between the bars painted across the road, in metres. */
+const MARKER_SPACING = 10;
+
+/** How far above the surface the bars sit, to avoid z-fighting. */
+const MARKER_LIFT = 0.03;
+
+/** Half the length of a bar along the direction of travel. */
+const MARKER_HALF_LENGTH = 0.32;
+
+/**
+ * Bars painted across the road every ten metres.
+ *
+ * The 3D view had no sense of scale or speed: a smooth grey ribbon gives the
+ * eye nothing to measure progress against, which the flat mode gets for free
+ * from its distance labels. These stream past and make speed legible.
+ */
+export function buildDistanceMarkers(track: Track3D): BufferGeometry {
+  const sections = roadCrossSections(track);
+  const surface = track.profile.surface;
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  let next = MARKER_SPACING;
+
+  for (let j = 0; j < sections.length; j++) {
+    const x = surface[j]!.x;
+    if (x < next) continue;
+    next = Math.ceil((x + 0.001) / MARKER_SPACING) * MARKER_SPACING;
+
+    const s = sections[j]!;
+    // Along-track direction, from the neighbouring cross-section.
+    const other = sections[Math.min(j + 1, sections.length - 1)] ?? s;
+    const fx = other.left[0] - s.left[0];
+    const fy = other.left[1] - s.left[1];
+    const fz = other.left[2] - s.left[2];
+    const flen = Math.hypot(fx, fy, fz) || 1;
+    const ax = (fx / flen) * MARKER_HALF_LENGTH;
+    const ay = (fy / flen) * MARKER_HALF_LENGTH;
+    const az = (fz / flen) * MARKER_HALF_LENGTH;
+
+    const base = positions.length / 3;
+    for (const edge of [s.left, s.right]) {
+      for (const sign of [-1, 1]) {
+        positions.push(
+          edge[0] + s.up[0] * MARKER_LIFT + ax * sign,
+          edge[1] + s.up[1] * MARKER_LIFT + ay * sign,
+          edge[2] + s.up[2] * MARKER_LIFT + az * sign,
+        );
+        normals.push(s.up[0], s.up[1], s.up[2]);
+      }
+    }
+    // left-back, left-front, right-back, right-front
+    indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+  }
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
 
 export function buildRoadGeometry(track: Track3D): BufferGeometry {
   const sections = roadCrossSections(track);

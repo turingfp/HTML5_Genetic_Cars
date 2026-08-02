@@ -14,6 +14,7 @@ import {
   BRAIN_INPUTS,
   BRAIN_NODE_COUNT,
   BRAIN_OUTPUTS,
+  BRAIN_RECURRENT,
   BRAIN_WEIGHT_COUNT,
   BrainRuntime,
   cloneBrain,
@@ -23,6 +24,7 @@ import {
   motorMultiplier,
   mutateBrain,
   randomBrain,
+  recurrentIndex,
   weightIndex,
   type Brain,
 } from '../src/ga/brain';
@@ -41,7 +43,7 @@ describe('brain', () => {
     const brain = randomBrain(rngFromSeed('size'));
     expect(brain.weights).toHaveLength(BRAIN_WEIGHT_COUNT);
     expect(BRAIN_WEIGHT_COUNT).toBe(
-      (BRAIN_INPUTS + 1) * BRAIN_HIDDEN + (BRAIN_HIDDEN + 1) * BRAIN_OUTPUTS,
+      (BRAIN_INPUTS + BRAIN_RECURRENT + 1) * BRAIN_HIDDEN + (BRAIN_HIDDEN + 1) * BRAIN_OUTPUTS,
     );
     expect(BRAIN_NODE_COUNT).toBe(BRAIN_INPUTS + BRAIN_HIDDEN + BRAIN_OUTPUTS);
     for (const w of brain.weights) expect(Math.abs(w)).toBeLessThanOrEqual(LIMIT);
@@ -54,8 +56,9 @@ describe('brain', () => {
     const child = crossoverBrain(rng, a, b);
     expect(child.weights).toHaveLength(BRAIN_WEIGHT_COUNT);
     for (const w of child.weights) expect(Math.abs(w)).toBe(1);
-    // With 47 coin flips, drawing entirely from one parent would be a 1-in-10^14
-    // event, so a child that looks like a clone means crossover is not running.
+    // Over a hundred coin flips, drawing entirely from one parent is not going
+    // to happen, so a child that looks like a clone means crossover is not
+    // running at all.
     expect(new Set(child.weights).size).toBe(2);
   });
 
@@ -86,7 +89,7 @@ describe('brain', () => {
         brain.weights[weightIndex(0, input, hidden)] = 1;
 
         const sensors = emptySensors();
-        const keys = ['pitch', 'roll', 'speed', 'drop', 'spin', 'slope'] as const;
+        const keys = ['pitch', 'roll', 'speed', 'drop', 'spin', 'near', 'mid', 'far'] as const;
         sensors[keys[input]!] = 1;
 
         const runtime = new BrainRuntime();
@@ -103,7 +106,8 @@ describe('brain', () => {
     for (let hidden = 0; hidden < BRAIN_HIDDEN; hidden++) {
       for (let output = 0; output < BRAIN_OUTPUTS; output++) {
         const brain = zeroBrain();
-        brain.weights[weightIndex(0, BRAIN_INPUTS, hidden)] = 4; // that node's bias
+        // The bias sits past the inputs and the recurrent slots.
+        brain.weights[weightIndex(0, BRAIN_INPUTS + BRAIN_RECURRENT, hidden)] = 4;
         brain.weights[weightIndex(1, hidden, output)] = 4;
 
         const runtime = new BrainRuntime();
@@ -114,6 +118,33 @@ describe('brain', () => {
         }
       }
     }
+  });
+
+  it('remembers what the hidden layer did last step', () => {
+    // A hidden unit wired only to itself through memory, and nothing else, has
+    // to decay from a kick rather than reset. Without recurrence the second
+    // step would read exactly the same as a cold start.
+    const brain = zeroBrain();
+    brain.weights[weightIndex(0, BRAIN_INPUTS + BRAIN_RECURRENT, 0)] = 3; // bias on unit 0
+    brain.weights[recurrentIndex(0, 1)] = 3; // unit 0's memory drives unit 1
+
+    const runtime = new BrainRuntime();
+    runtime.evaluate(brain, emptySensors());
+    // On the first step unit 1 has seen nothing yet, because unit 0's value is
+    // only carried forward after the whole layer is computed.
+    expect(runtime.activations[BRAIN_INPUTS + 1]).toBe(0);
+
+    runtime.evaluate(brain, emptySensors());
+    expect(runtime.activations[BRAIN_INPUTS + 1]).toBeGreaterThan(0.9);
+  });
+
+  it('gives each car its own memory rather than sharing one', () => {
+    const brain = randomBrain(rngFromSeed('separate'));
+    const a = new BrainRuntime();
+    const b = new BrainRuntime();
+    for (let i = 0; i < 5; i++) a.evaluate(brain, emptySensors());
+    expect(Array.from(b.memory).every((v) => v === 0)).toBe(true);
+    expect(Array.from(a.memory).some((v) => v !== 0)).toBe(true);
   });
 
   it('never asks a wheel for more than the motor can give', () => {

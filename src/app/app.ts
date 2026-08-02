@@ -289,6 +289,7 @@ export class App {
         ? {
             brain: watched.def?.brain ?? null,
             activations: watched.activations,
+            memory: watched.memory,
             alive: watched.alive,
           }
         : null,
@@ -346,6 +347,7 @@ export class App {
             // A 3D car keeps its driver on the silhouette it was extruded from.
             brain: watched.def?.base.brain ?? null,
             activations: watched.activations,
+            memory: watched.memory,
             alive: watched.alive,
           }
         : null,

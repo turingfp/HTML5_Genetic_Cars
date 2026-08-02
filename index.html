@@ -83,11 +83,15 @@
             <span><i class="swatch-senses"></i>what it feels</span>
             <span><i class="swatch-hidden"></i>what it makes of that</span>
             <span><i class="swatch-out"></i>what each wheel does</span>
+            <span><i class="swatch-loop"></i>what it remembers</span>
           </div>
           <p class="hint">
-            Every car has a small network that reads how it is sitting and sets how fast each wheel
-            turns. Green edges push, red ones hold back, and the brighter a line is the more signal
-            going through it right now. Click a bar in Cars to watch a different car.
+            Every car has a small network that reads how it is sitting, plus the slope of the
+            ground at three distances ahead, and sets how fast each wheel turns. Green edges push,
+            red ones hold back, and the brighter a line is the more signal going through it right
+            now. The loop above a middle node is memory: that unit feeds its own value into the
+            next step, so the car can tell "stuck against this rock for a second" from "about to
+            crest a rise". Click a bar in Cars to watch a different car.
           </p>
           <div class="subhead">
             <h3>Gene pool</h3>
@@ -228,10 +232,11 @@
             </p>
             <p>
               That last one is the real difference. In the original a wheel spun at one fixed speed
-              forever, so a car was a shape and nothing else. Here the network reads six things
-              about how the car is sitting and moving, and sets the speed of each wheel from them.
-              Its weights are genes like any other, so the search is over bodies and drivers at the
-              same time, and you can watch both change in the Driver panel.
+              forever, so a car was a shape and nothing else. Here the network reads how the car is
+              sitting and moving, looks at the ground three distances ahead, remembers what it was
+              doing a moment ago, and sets the speed of each wheel from all of that. Its 82 weights
+              are genes like any other, so the search is over bodies and drivers at the same time,
+              and you can watch both change in the Driver panel.
             </p>
             <p>
               A car scores by how far it gets plus a bonus for average speed. It dies when it stops

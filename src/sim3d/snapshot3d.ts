@@ -5,7 +5,7 @@
  * importing Box3D, which is only fetched when someone switches to 3D.
  */
 
-import { BRAIN_NODE_COUNT } from '../ga/brain';
+import { BRAIN_NODE_COUNT, BRAIN_RECURRENT } from '../ga/brain';
 import type { Car3DDef } from '../ga/genome3d';
 import type { Quat, Vec3 } from './box3d';
 
@@ -25,6 +25,8 @@ export interface Car3DSnapshot {
   maxX: number;
   /** This car's network as it last fired. Copied, so it is safe to hold on to. */
   activations: Float32Array;
+  /** What its hidden layer is carrying into the next step. */
+  memory: Float32Array;
 }
 
 export interface World3DSnapshot {
@@ -43,6 +45,10 @@ export function emptyPose3D(): Pose3D {
 
 export function emptyActivations(): Float32Array {
   return new Float32Array(BRAIN_NODE_COUNT);
+}
+
+export function emptyMemory(): Float32Array {
+  return new Float32Array(BRAIN_RECURRENT);
 }
 
 export function createSnapshot3D(): World3DSnapshot {

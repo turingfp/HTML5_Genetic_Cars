@@ -30,13 +30,14 @@ import {
   type GAParams,
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
-import { slopeAhead, surfaceIndexAt } from '../sim/track';
+import { slopeProbes, surfaceIndexAt, type SlopeProbes } from '../sim/track';
 import { generateTrack3D, roadCrossSections, type Track3D } from './track3d';
 import { Car3D } from './car3d';
 import type { Box3DBody, Box3DWorld, Vec3 } from './box3d';
 import { loadBox3D } from './box3d';
 import {
   emptyActivations,
+  emptyMemory,
   emptyPose3D,
   type Pose3D,
   type World3DSnapshot,
@@ -64,6 +65,9 @@ export class Simulation3D {
 
   /** Frame at which the furthest point reached last moved meaningfully. */
   private lastProgressFrame = 0;
+
+  /** Reused terrain lookahead, so stepping allocates nothing. */
+  private readonly probes: SlopeProbes = { near: 0, mid: 0, far: 0 };
 
   private scores: CarScore<Car3DDef>[] = [];
   private roadBodies: Box3DBody[] = [];
@@ -171,7 +175,8 @@ export class Simulation3D {
     // Drivers act first on what they saw last step, then the world moves.
     for (const car of this.cars) {
       if (!car.alive || !car.chassis) continue;
-      car.drive(slopeAhead(this.track.profile, car.chassis.getPosition().x));
+      slopeProbes(this.track.profile, car.chassis.getPosition().x, this.probes);
+      car.drive(this.probes);
     }
 
     this.world.step(TIME_STEP, SUB_STEP_COUNT);
@@ -271,6 +276,7 @@ export class Simulation3D {
         health01: 0,
         maxX: 0,
         activations: emptyActivations(),
+        memory: emptyMemory(),
       });
     }
     out.cars.length = this.cars.length;
@@ -293,6 +299,7 @@ export class Simulation3D {
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;
       snap.maxX = car.maxX;
       snap.activations.set(car.brain.activations);
+      snap.memory.set(car.brain.memory);
 
       if (!car.alive || !car.chassis) continue;
 

@@ -24,8 +24,9 @@ import {
   WHEEL_FRICTION,
   WHEEL_RESTITUTION,
 } from '../config';
-import { BrainRuntime, motorMultiplier, type Sensors } from '../ga/brain';
+import { BrainRuntime, emptySensors, motorMultiplier } from '../ga/brain';
 import type { CarDef } from '../ga/genome';
+import type { SlopeProbes } from './track';
 
 /**
  * What counts as "fast" and "spinning hard" to a car's senses, so the inputs
@@ -45,6 +46,8 @@ export class Car {
   readonly brain = new BrainRuntime();
 
   private motors: RevoluteJoint[] = [];
+  /** Reused every step so driving allocates nothing. */
+  private readonly sensors = emptySensors();
 
   alive = true;
   health = MAX_CAR_HEALTH;
@@ -131,22 +134,23 @@ export class Car {
   /**
    * Let the driver set the wheel speeds for this step.
    *
-   * `slope` is how steeply the ground rises just ahead of the car; the
-   * simulation looks it up, since only it holds the terrain.
+   * `probes` is how steeply the ground rises at three distances ahead of the
+   * car. The simulation looks them up, since only it holds the terrain.
    */
-  drive(slope: number): void {
+  drive(probes: SlopeProbes): void {
     const chassis = this.chassis;
     if (!chassis || !this.alive) return;
 
     const velocity = chassis.getLinearVelocity();
-    const sensors: Sensors = {
-      pitch: Math.sin(chassis.getAngle()),
-      roll: 0,
-      speed: velocity.x / SENSOR_SPEED_SCALE,
-      drop: velocity.y / SENSOR_SPEED_SCALE,
-      spin: chassis.getAngularVelocity() / SENSOR_SPIN_SCALE,
-      slope,
-    };
+    const sensors = this.sensors;
+    sensors.pitch = Math.sin(chassis.getAngle());
+    sensors.roll = 0;
+    sensors.speed = velocity.x / SENSOR_SPEED_SCALE;
+    sensors.drop = velocity.y / SENSOR_SPEED_SCALE;
+    sensors.spin = chassis.getAngularVelocity() / SENSOR_SPIN_SCALE;
+    sensors.near = probes.near;
+    sensors.mid = probes.mid;
+    sensors.far = probes.far;
 
     this.brain.evaluate(this.def.brain, sensors);
     for (let i = 0; i < this.motors.length; i++) {

@@ -10,15 +10,22 @@
  * each wheel. So a car can learn to ease off before a crest, or dig in on a
  * climb, instead of flooring it into everything.
  *
- * Kept deliberately small. It is 47 numbers, it runs 20 times per physics step,
- * and you can watch every weight of it on screen without squinting.
+ * Kept deliberately small: 82 numbers, run 20 times per physics step, and you
+ * can watch every weight of it on screen without squinting.
+ *
+ * A note on sizing, because bigger looked obviously better and was not. An
+ * earlier pass ran this at 8 hidden units, and measured over twelve runs it was
+ * worse than five: the population is 20 cars, and a search space that wide is
+ * simply not explorable in the generations anyone will sit through. What the
+ * driver is allowed to do turned out to matter far more than how much of it
+ * there is. See the README for the numbers.
  */
 
 import type { Rng } from '../core/rng';
-import { mutateValue, type MutationParams } from './mutation';
+import type { MutationParams } from './mutation';
 
 /** What the car can feel. Everything arrives roughly inside [-1, 1]. */
-export const BRAIN_INPUTS = 6;
+export const BRAIN_INPUTS = 8;
 
 /** The middle layer, where combinations of senses turn into intentions. */
 export const BRAIN_HIDDEN = 5;
@@ -26,9 +33,19 @@ export const BRAIN_HIDDEN = 5;
 /** One output per wheel. In 3D the two wheels of a pair share an output. */
 export const BRAIN_OUTPUTS = 2;
 
+/**
+ * Each hidden unit also sees what every hidden unit did on the previous step,
+ * which is the whole of the network's memory.
+ *
+ * Without it the driver is a pure reflex: it cannot tell "rocking against a
+ * rock for the last second" from "about to crest a rise", because both look
+ * identical in a single frame. One step of feedback is enough to carry that.
+ */
+export const BRAIN_RECURRENT = BRAIN_HIDDEN;
+
 /** Both layers get a bias, which is why each fan-in is one wider than it looks. */
 export const BRAIN_WEIGHT_COUNT =
-  (BRAIN_INPUTS + 1) * BRAIN_HIDDEN + (BRAIN_HIDDEN + 1) * BRAIN_OUTPUTS;
+  (BRAIN_INPUTS + BRAIN_RECURRENT + 1) * BRAIN_HIDDEN + (BRAIN_HIDDEN + 1) * BRAIN_OUTPUTS;
 
 /** Every activation in order: inputs, then hidden, then outputs. */
 export const BRAIN_NODE_COUNT = BRAIN_INPUTS + BRAIN_HIDDEN + BRAIN_OUTPUTS;
@@ -41,7 +58,16 @@ const WEIGHT_RANGE = WEIGHT_LIMIT * 2;
  * Names for the visualisation, in activation order. Short enough to fit beside
  * a node on a phone.
  */
-export const INPUT_LABELS = ['pitch', 'roll', 'speed', 'drop', 'spin', 'slope'] as const;
+export const INPUT_LABELS = [
+  'pitch',
+  'roll',
+  'speed',
+  'drop',
+  'spin',
+  'near',
+  'mid',
+  'far',
+] as const;
 export const OUTPUT_LABELS = ['wheel A', 'wheel B'] as const;
 
 export interface Brain {
@@ -64,12 +90,21 @@ export interface Sensors {
   drop: number;
   /** How fast the body is tumbling. */
   spin: number;
-  /** How steeply the ground ahead rises. */
-  slope: number;
+  /**
+   * How steeply the ground rises at three distances ahead.
+   *
+   * One sample was the immediate gradient and nothing else, so a driver could
+   * only ever react to what it was already on. Three gives it the shape of what
+   * is coming: a wall at `far` and flat ground at `near` is a run-up, and the
+   * same wall at `near` is a problem now.
+   */
+  near: number;
+  mid: number;
+  far: number;
 }
 
 export function emptySensors(): Sensors {
-  return { pitch: 0, roll: 0, speed: 0, drop: 0, spin: 0, slope: 0 };
+  return { pitch: 0, roll: 0, speed: 0, drop: 0, spin: 0, near: 0, mid: 0, far: 0 };
 }
 
 export function randomBrain(rng: Rng): Brain {
@@ -99,16 +134,32 @@ export function crossoverBrain(rng: Rng, a: Brain, b: Brain): Brain {
   return { weights };
 }
 
+/**
+ * How wide a mutation step is, relative to the whole weight range, at mutation
+ * size 100%.
+ *
+ * The body genes are mutated by resampling inside a window, and at size 100%
+ * that window is the entire range: a mutated gene is simply re-rolled. That is
+ * fine for "how long is this strut", where any value is as good a guess as any
+ * other. It is wrong for a network weight, where a working driver is a
+ * particular combination and re-rolling one of them at random destroys it. So
+ * weights creep instead: a Gaussian nudge around the value they already have.
+ */
+const MUTATION_SIGMA = 0.22;
+
+/** A standard normal from a uniform source, via Box-Muller. */
+function gaussian(rng: Rng): number {
+  let u = rng();
+  if (u < 1e-12) u = 1e-12;
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
+}
+
 export function mutateBrain(rng: Rng, brain: Brain, params: MutationParams): Brain {
+  const sigma = WEIGHT_RANGE * MUTATION_SIGMA * params.size;
   for (let i = 0; i < BRAIN_WEIGHT_COUNT; i++) {
     if (rng() >= params.rate) continue;
-    brain.weights[i] = mutateValue(
-      rng,
-      brain.weights[i] ?? 0,
-      -WEIGHT_LIMIT,
-      WEIGHT_RANGE,
-      params.size,
-    );
+    const next = (brain.weights[i] ?? 0) + gaussian(rng) * sigma;
+    brain.weights[i] = next < -WEIGHT_LIMIT ? -WEIGHT_LIMIT : next > WEIGHT_LIMIT ? WEIGHT_LIMIT : next;
   }
   return brain;
 }
@@ -148,9 +199,13 @@ export class BrainRuntime {
   /** Inputs, then hidden, then outputs, in that order. */
   readonly activations = new Float32Array(BRAIN_NODE_COUNT);
 
+  /** What the hidden layer did last step. This is the memory. */
+  readonly memory = new Float32Array(BRAIN_RECURRENT);
+
   /** Run one forward pass and leave the result in `activations`. */
   evaluate(brain: Brain, sensors: Sensors): void {
     const a = this.activations;
+    const m = this.memory;
     const w = brain.weights;
 
     a[0] = clamp1(sensors.pitch);
@@ -158,12 +213,15 @@ export class BrainRuntime {
     a[2] = clamp1(sensors.speed);
     a[3] = clamp1(sensors.drop);
     a[4] = clamp1(sensors.spin);
-    a[5] = clamp1(sensors.slope);
+    a[5] = clamp1(sensors.near);
+    a[6] = clamp1(sensors.mid);
+    a[7] = clamp1(sensors.far);
 
     let k = 0;
     for (let h = 0; h < BRAIN_HIDDEN; h++) {
       let sum = 0;
       for (let i = 0; i < BRAIN_INPUTS; i++) sum += (a[i] ?? 0) * (w[k++] ?? 0);
+      for (let r = 0; r < BRAIN_RECURRENT; r++) sum += (m[r] ?? 0) * (w[k++] ?? 0);
       sum += w[k++] ?? 0;
       a[BRAIN_INPUTS + h] = tanh(sum);
     }
@@ -174,6 +232,11 @@ export class BrainRuntime {
       sum += w[k++] ?? 0;
       a[BRAIN_INPUTS + BRAIN_HIDDEN + o] = tanh(sum);
     }
+
+    // Carried into the next step. Written after the whole layer is computed, so
+    // every hidden unit sees the same previous state rather than a mix of old
+    // and new depending on its index.
+    for (let h = 0; h < BRAIN_HIDDEN; h++) m[h] = a[BRAIN_INPUTS + h] ?? 0;
   }
 
   /** Output for one wheel, in [-1, 1]. */
@@ -190,6 +253,12 @@ export class BrainRuntime {
  * twenty motionless boxes and there is nothing for selection to work with. What
  * it can do is stall a wheel, overdrive it to half again, or back off a touch
  * to get a run at something.
+ *
+ * Full reverse was tried and measured. In the flat mode it is a clear win, and
+ * a car that can back off and take another go at an obstacle gets about 5%
+ * further. In 3D it loses more than that, because reversing near a banked edge
+ * is how a car falls off, and falling off is instant death where grinding to a
+ * halt is merely slow. 3D is the mode this opens in, so the floor stays here.
  */
 export const MOTOR_BASE = 0.7;
 export const MOTOR_GAIN = 0.8;
@@ -206,8 +275,18 @@ function clamp1(v: number): number {
 /**
  * Where each weight sits, so the visualisation can draw the edges without
  * re-deriving the layout. Index into `Brain.weights`.
+ *
+ * Layer 0 is the fan-in of a hidden unit, and it is wider than the input layer:
+ * inputs first, then the recurrent slots, then the bias. Layer 1 is an output's
+ * fan-in. `recurrentIndex` names the memory slots inside layer 0.
  */
 export function weightIndex(layer: 0 | 1, from: number, to: number): number {
-  if (layer === 0) return to * (BRAIN_INPUTS + 1) + from;
-  return (BRAIN_INPUTS + 1) * BRAIN_HIDDEN + to * (BRAIN_HIDDEN + 1) + from;
+  const hiddenFanIn = BRAIN_INPUTS + BRAIN_RECURRENT + 1;
+  if (layer === 0) return to * hiddenFanIn + from;
+  return hiddenFanIn * BRAIN_HIDDEN + to * (BRAIN_HIDDEN + 1) + from;
+}
+
+/** Weight carrying hidden unit `from`'s last value into hidden unit `to`. */
+export function recurrentIndex(from: number, to: number): number {
+  return weightIndex(0, BRAIN_INPUTS + from, to);
 }

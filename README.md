@@ -48,29 +48,46 @@ In the original a wheel spun at one fixed speed forever. A car was a shape and
 nothing else, and the whole search was "what silhouette survives being dragged
 over a hill".
 
-Now every car also has a network. It sees six things:
+Now every car also has a network. It sees eight things:
 
-| Input   | What it is                                     |
-| ------- | ---------------------------------------------- |
-| `pitch` | nose up or nose down                           |
-| `roll`  | leaning left or right, and always 0 in 2D      |
-| `speed` | how fast it is going along the course          |
-| `drop`  | how fast it is falling                         |
-| `spin`  | how fast the body is tumbling                  |
-| `slope` | how steeply the ground rises about 3 m ahead   |
+| Input   | What it is                                  |
+| ------- | ------------------------------------------- |
+| `pitch` | nose up or nose down                        |
+| `roll`  | leaning left or right, and always 0 in 2D   |
+| `speed` | how fast it is going along the course       |
+| `drop`  | how fast it is falling                      |
+| `spin`  | how fast the body is tumbling               |
+| `near`  | how steeply the ground rises 1.5 m ahead    |
+| `mid`   | the same 4 m ahead                          |
+| `far`   | the same 9 m ahead                          |
 
 Those feed five hidden units, which feed one output per wheel. Each output sets
 that wheel's speed somewhere between a dead stop and half again the base speed,
 so a car can ease off before a crest, dig in on a climb, or back off a touch to
 get a run at something.
 
-It is 47 weights. That is small on purpose: it fits on screen, it runs twenty
+The hidden units also see what all five of them did on the previous step. That
+one loop is the whole of the network's memory, and it is what separates a driver
+from a reflex: without it a car cannot tell "rocking against a rock for the last
+second" from "about to crest a rise", because both look identical in a single
+frame.
+
+Three lookaheads rather than one for a similar reason. A single sample is the
+gradient the car is already on, so it can only react. A wall at `far` with flat
+ground at `near` is a run-up; the same wall at `near` is a problem now.
+
+That comes to 82 weights. Small on purpose: it fits on screen, it runs twenty
 times per physics step without showing up in a profile, and it is enough to be
 interesting without needing anything cleverer than a genetic algorithm to train
-it. The floor on a wheel's speed sits just above reverse rather than at full
-reverse, because a network wired at random still has to produce a car that
-moves. Otherwise generation one is twenty motionless boxes and selection has
-nothing to work with.
+it.
+
+Weights mutate differently from body genes. A body gene is resampled inside a
+window, and at the default mutation size of 100% that window is the whole range,
+so a mutated gene is simply re-rolled. That is fine for "how long is this strut",
+where one value is as good a guess as another. It is wrong for a network weight,
+where a working driver is a particular combination and re-rolling one member of
+it at random destroys the thing. So weights creep: a Gaussian nudge around the
+value they already have.
 
 The **Driver** panel draws it live for whichever car the camera is on. Green
 edges push, red ones hold back, thickness is the size of the weight, and
@@ -83,6 +100,41 @@ by value. Generation one is noise. Leave it running and columns start to agree,
 which is selection fixing a weight because every car that survived happens to
 share it. Bands that stay noisy are weights nothing depends on. The fitness
 chart tells you the search is working; this tells you where.
+
+### Does a smarter driver actually drive further?
+
+Mostly not, and it is worth being straight about that.
+
+Each row below is 12 runs (6 track seeds by 2 population seeds), 30 generations
+each in 2D and 20 in 3D, reporting the furthest any car got. `best` is the peak
+across all generations, `final` the last generation, `mean` the average across
+them.
+
+| Driver                                  | 2D best | 2D final | 3D best | 3D final |
+| --------------------------------------- | ------- | -------- | ------- | -------- |
+| Reflex only, 6 inputs, re-roll mutation  |   156.3 |    136.9 |    72.3 |     58.0 |
+| Memory, 8 inputs, Gaussian creep         |   158.9 |    144.5 |    73.5 |     53.7 |
+
+So: a fraction better on peak distance, inside the noise. The architecture is
+strictly more capable and it is far more interesting to watch, but the driver is
+not what is holding these cars back. The body is. A controller that can only
+vary wheel speed cannot steer, cannot shift weight, and cannot change gearing,
+so there is a low ceiling on what it can contribute.
+
+Two things that did move the numbers, in opposite directions:
+
+- **Making the network bigger made it worse.** At 8 hidden units instead of 5,
+  2D best fell from 158.9 to 151.1. A population of 20 cars cannot explore a
+  search space that wide in the generations anyone will sit through.
+- **Giving the driver more authority helped in 2D and hurt in 3D.** Letting an
+  output command real reverse, so a car can back up and take another run at an
+  obstacle, took 2D best from 158.9 to 163.6. The same change took 3D best from
+  73.5 down to 68.1, because reversing near a banked edge is how a car falls
+  off, and falling off is instant death where grinding to a halt is merely slow.
+  3D is the mode this opens in, so reverse is not shipped.
+
+That last pair is the interesting result. What the driver is *allowed to do*
+matters much more than how much network there is to decide it with.
 
 ## The 3D mode
 

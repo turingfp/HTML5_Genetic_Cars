@@ -15,9 +15,11 @@ import {
   BRAIN_HIDDEN,
   BRAIN_INPUTS,
   BRAIN_OUTPUTS,
+  BRAIN_RECURRENT,
   INPUT_LABELS,
   OUTPUT_LABELS,
   motorMultiplier,
+  recurrentIndex,
   weightIndex,
   type Brain,
 } from '../ga/brain';
@@ -26,6 +28,8 @@ import {
 export interface BrainViewCar {
   brain: Brain | null;
   activations: Float32Array | null;
+  /** What the hidden layer is carrying into the next step. */
+  memory: Float32Array | null;
   alive: boolean;
 }
 
@@ -123,13 +127,25 @@ export class BrainView {
       ctx.fillText(INPUT_LABELS[i] ?? '', left - radius - 5 * dpr, y);
     }
 
+    const memory = car.memory;
     for (let hIdx = 0; hIdx < BRAIN_HIDDEN; hIdx++) {
-      this.node(
-        left + columnGap,
-        columnY(BRAIN_HIDDEN, hIdx),
-        radius,
-        (a[BRAIN_INPUTS + hIdx] ?? 0) * dim,
-      );
+      const y = columnY(BRAIN_HIDDEN, hIdx);
+      // The loop first, so the node sits on top of it.
+      if (hIdx < BRAIN_RECURRENT) {
+        let outgoing = 0;
+        for (let to = 0; to < BRAIN_HIDDEN; to++) {
+          outgoing += Math.abs(weights[recurrentIndex(hIdx, to)] ?? 0);
+        }
+        this.loop(
+          left + columnGap,
+          y,
+          radius,
+          Math.min(1, outgoing / (BRAIN_HIDDEN * 0.8)),
+          (memory?.[hIdx] ?? 0) * dim,
+          dpr,
+        );
+      }
+      this.node(left + columnGap, y, radius, (a[BRAIN_INPUTS + hIdx] ?? 0) * dim);
     }
 
     for (let o = 0; o < BRAIN_OUTPUTS; o++) {
@@ -144,6 +160,36 @@ export class BrainView {
       ctx.fillStyle = car.alive ? 'rgba(226, 232, 240, 0.95)' : 'rgba(148, 163, 184, 0.5)';
       ctx.fillText(`${(motorMultiplier(value) * 100).toFixed(0)}%`, right + radius + 6 * dpr, y + 6 * dpr);
     }
+  }
+
+  /**
+   * A hidden unit's memory, drawn as a loop above it.
+   *
+   * These are the recurrent weights, and drawing all of them as lines from the
+   * hidden column back to itself was an unreadable knot. One loop per unit says
+   * the useful part: how strongly it feeds itself and its neighbours forward in
+   * time, and what it is carrying right now.
+   */
+  private loop(
+    x: number,
+    y: number,
+    radius: number,
+    strength: number,
+    carried: number,
+    dpr: number,
+  ): void {
+    if (strength < 0.05) return;
+    const { ctx } = this;
+    const magnitude = Math.min(1, Math.abs(carried));
+    const [r, g, b] = carried >= 0 ? POSITIVE : NEGATIVE;
+
+    // Counter-clockwise from 0 to PI sweeps over the top of the circle. Going
+    // the other way put the loop underneath, where the node covered it.
+    ctx.beginPath();
+    ctx.arc(x, y - radius * 1.15, radius * 0.78, 0, Math.PI, true);
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.18 + strength * 0.22 + magnitude * 0.55})`;
+    ctx.lineWidth = (0.7 + strength * 1.6) * dpr;
+    ctx.stroke();
   }
 
   private edge(

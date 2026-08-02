@@ -91,7 +91,7 @@ export function generateTrack(seed: string, tileCount = TRACK_TILE_COUNT): Track
  * driver do something before it hits a slope instead of after. Clamped, because
  * a near-vertical tile would otherwise swamp every other input.
  */
-export function slopeAhead(track: TrackDef, x: number, lookahead = LOOKAHEAD): number {
+export function slopeAhead(track: TrackDef, x: number, lookahead: number): number {
   const points = track.surface;
   const here = surfaceIndexAt(track, x);
   const there = surfaceIndexAt(track, x + lookahead);
@@ -103,8 +103,24 @@ export function slopeAhead(track: TrackDef, x: number, lookahead = LOOKAHEAD): n
   return slope < -1 ? -1 : slope > 1 ? 1 : slope;
 }
 
-/** How far ahead a car looks, in metres. About one car length. */
-const LOOKAHEAD = 3;
+/**
+ * Three distances a car looks ahead, in metres: about a car length, about a
+ * braking distance, and far enough to see a hill before it starts climbing it.
+ */
+export const LOOKAHEADS = [1.5, 4, 9] as const;
+
+export interface SlopeProbes {
+  near: number;
+  mid: number;
+  far: number;
+}
+
+/** Fill a caller-owned probe set, so stepping allocates nothing. */
+export function slopeProbes(track: TrackDef, x: number, out: SlopeProbes): void {
+  out.near = slopeAhead(track, x, LOOKAHEADS[0]);
+  out.mid = slopeAhead(track, x, LOOKAHEADS[1]);
+  out.far = slopeAhead(track, x, LOOKAHEADS[2]);
+}
 
 /**
  * Index of the first surface point at or after `x`, via binary search.

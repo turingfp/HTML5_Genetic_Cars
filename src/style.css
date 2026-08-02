@@ -606,6 +606,16 @@ summary:hover h2 {
   background: rgb(74 222 128 / 70%) !important;
 }
 
+/* Half a ring, matching the loop drawn over a hidden node. */
+.swatch-loop {
+  width: 11px !important;
+  height: 6px !important;
+  border-radius: 11px 11px 0 0 !important;
+  border-bottom: none !important;
+  background: transparent !important;
+  border-color: rgb(74 222 128 / 75%) !important;
+}
+
 /* ── Hall of fame ───────────────────────────────────────────────────────── */
 
 /* Ten entries make the sidebar much taller than the stage beside it, so the

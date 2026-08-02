@@ -21,9 +21,10 @@ import {
   WHEEL_FRICTION,
   WHEEL_RESTITUTION,
 } from '../config';
-import { BrainRuntime, motorMultiplier, type Sensors } from '../ga/brain';
+import { BrainRuntime, emptySensors, motorMultiplier } from '../ga/brain';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
 import { SENSOR_SPEED_SCALE, SENSOR_SPIN_SCALE } from '../sim/car';
+import type { SlopeProbes } from '../sim/track';
 import type { Box3DBody, Box3DJoint, Box3DWorld } from './box3d';
 
 /**
@@ -74,6 +75,8 @@ export class Car3D {
   private motors: Box3DJoint[] = [];
   /** Which of the two outputs drives each wheel. Left and right pairs share. */
   private motorOutput: number[] = [];
+  /** Reused every step so driving allocates nothing. */
+  private readonly sensors = emptySensors();
 
   alive = true;
   health = MAX_CAR_HEALTH;
@@ -154,7 +157,7 @@ export class Car3D {
   }
 
   /** Let the driver set the wheel speeds. See `Car.drive` in the flat mode. */
-  drive(slope: number): void {
+  drive(probes: SlopeProbes): void {
     const chassis = this.chassis;
     if (!chassis || !this.alive) return;
 
@@ -167,14 +170,15 @@ export class Car3D {
     const upX = 2 * (q.x * q.y - q.z * q.w);
     const upZ = 2 * (q.x * q.w + q.y * q.z);
 
-    const sensors: Sensors = {
-      pitch: -upX,
-      roll: upZ,
-      speed: velocity.x / SENSOR_SPEED_SCALE,
-      drop: velocity.y / SENSOR_SPEED_SCALE,
-      spin: spin.z / SENSOR_SPIN_SCALE,
-      slope,
-    };
+    const sensors = this.sensors;
+    sensors.pitch = -upX;
+    sensors.roll = upZ;
+    sensors.speed = velocity.x / SENSOR_SPEED_SCALE;
+    sensors.drop = velocity.y / SENSOR_SPEED_SCALE;
+    sensors.spin = spin.z / SENSOR_SPIN_SCALE;
+    sensors.near = probes.near;
+    sensors.mid = probes.mid;
+    sensors.far = probes.far;
 
     this.brain.evaluate(this.def.base.brain, sensors);
     for (let i = 0; i < this.motors.length; i++) {

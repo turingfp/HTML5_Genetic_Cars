@@ -26,12 +26,12 @@ import {
   TIME_STEP,
   VELOCITY_ITERATIONS,
 } from '../config';
-import { BRAIN_NODE_COUNT } from '../ga/brain';
+import { BRAIN_NODE_COUNT, BRAIN_RECURRENT } from '../ga/brain';
 import { nextGeneration, randomPopulation, type CarEntry, type CarScore, type GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import { ReplayRecorder, type Pose } from '../replay/recorder';
-import { generateTrack, slopeAhead, type TrackDef } from './track';
+import { generateTrack, slopeProbes, type SlopeProbes, type TrackDef } from './track';
 import { Car } from './car';
 
 export interface CarSnapshot {
@@ -47,6 +47,8 @@ export interface CarSnapshot {
   maxX: number;
   /** This car's network as it last fired. Copied, so it is safe to hold on to. */
   activations: Float32Array;
+  /** What its hidden layer is carrying into the next step. */
+  memory: Float32Array;
 }
 
 export interface WorldSnapshot {
@@ -99,6 +101,9 @@ export class Simulation {
 
   /** Frame at which the furthest point reached last moved meaningfully. */
   private lastProgressFrame = 0;
+
+  /** Reused terrain lookahead, so stepping allocates nothing. */
+  private readonly probes: SlopeProbes = { near: 0, mid: 0, far: 0 };
 
   /** Scores of cars that have already died this generation. */
   private scores: CarScore[] = [];
@@ -186,7 +191,8 @@ export class Simulation {
     // in the same instant it happened.
     for (const car of this.cars) {
       if (!car.alive || !car.chassis) continue;
-      car.drive(slopeAhead(this.track, car.chassis.getPosition().x));
+      slopeProbes(this.track, car.chassis.getPosition().x, this.probes);
+      car.drive(this.probes);
     }
 
     this.world.step(TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
@@ -281,6 +287,7 @@ export class Simulation {
         health01: 0,
         maxX: 0,
         activations: new Float32Array(BRAIN_NODE_COUNT),
+        memory: new Float32Array(BRAIN_RECURRENT),
       });
     }
     out.cars.length = this.cars.length;
@@ -304,6 +311,7 @@ export class Simulation {
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;
       snap.maxX = car.maxX;
       snap.activations.set(car.brain.activations);
+      snap.memory.set(car.brain.memory);
 
       if (!car.alive || !car.chassis || !car.wheels) continue;
 

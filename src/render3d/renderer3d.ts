@@ -2,7 +2,7 @@
  * The 3D view.
  *
  * Cars are rebuilt as meshes whenever a new generation starts, then only their
- * transforms change per frame — the geometry of a car never varies once it is
+ * transforms change per frame. The geometry of a car never varies once it is
  * born, so there is nothing else to update.
  */
 

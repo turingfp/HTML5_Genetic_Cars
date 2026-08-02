@@ -1,8 +1,8 @@
 /**
  * The 3D simulation.
  *
- * Mirrors the flat mode's shape — one world, one generation, a snapshot for
- * the renderer — but on Box3D, with a road that banks and cars that can roll
+ * Mirrors the flat mode's shape (one world, one generation, a snapshot for
+ * the renderer) but on Box3D, with a road that banks and cars that can roll
  * off it.
  */
 
@@ -30,12 +30,17 @@ import {
   type GAParams,
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
-import { surfaceIndexAt } from '../sim/track';
+import { slopeAhead, surfaceIndexAt } from '../sim/track';
 import { generateTrack3D, roadCrossSections, type Track3D } from './track3d';
 import { Car3D } from './car3d';
 import type { Box3DBody, Box3DWorld, Vec3 } from './box3d';
 import { loadBox3D } from './box3d';
-import { emptyPose3D, type Pose3D, type World3DSnapshot } from './snapshot3d';
+import {
+  emptyActivations,
+  emptyPose3D,
+  type Pose3D,
+  type World3DSnapshot,
+} from './snapshot3d';
 
 export { createSnapshot3D } from './snapshot3d';
 export type { Car3DSnapshot, Pose3D, World3DSnapshot } from './snapshot3d';
@@ -163,6 +168,12 @@ export class Simulation3D {
 
   /** Advance one fixed step. Returns true if the generation ended. */
   step(): boolean {
+    // Drivers act first on what they saw last step, then the world moves.
+    for (const car of this.cars) {
+      if (!car.alive || !car.chassis) continue;
+      car.drive(slopeAhead(this.track.profile, car.chassis.getPosition().x));
+    }
+
     this.world.step(TIME_STEP, SUB_STEP_COUNT);
     this.frame++;
 
@@ -259,6 +270,7 @@ export class Simulation3D {
         wheels: [emptyPose3D(), emptyPose3D(), emptyPose3D(), emptyPose3D()],
         health01: 0,
         maxX: 0,
+        activations: emptyActivations(),
       });
     }
     out.cars.length = this.cars.length;
@@ -280,6 +292,7 @@ export class Simulation3D {
       snap.alive = car.alive;
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;
       snap.maxX = car.maxX;
+      snap.activations.set(car.brain.activations);
 
       if (!car.alive || !car.chassis) continue;
 

@@ -85,6 +85,28 @@ export function generateTrack(seed: string, tileCount = TRACK_TILE_COUNT): Track
 }
 
 /**
+ * How steeply the ground rises just ahead of `x`, as rise over run.
+ *
+ * This is the one thing a car can see rather than feel, and it is what lets a
+ * driver do something before it hits a slope instead of after. Clamped, because
+ * a near-vertical tile would otherwise swamp every other input.
+ */
+export function slopeAhead(track: TrackDef, x: number, lookahead = LOOKAHEAD): number {
+  const points = track.surface;
+  const here = surfaceIndexAt(track, x);
+  const there = surfaceIndexAt(track, x + lookahead);
+  const a = points[Math.min(here, points.length - 1)]!;
+  const b = points[Math.min(there, points.length - 1)]!;
+  const run = b.x - a.x;
+  if (run <= 1e-6) return 0;
+  const slope = (b.y - a.y) / run;
+  return slope < -1 ? -1 : slope > 1 ? 1 : slope;
+}
+
+/** How far ahead a car looks, in metres. About one car length. */
+const LOOKAHEAD = 3;
+
+/**
  * Index of the first surface point at or after `x`, via binary search.
  * Used to draw only the visible slice of terrain.
  */

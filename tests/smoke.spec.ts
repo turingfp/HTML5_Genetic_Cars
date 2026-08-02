@@ -13,10 +13,37 @@ interface Debug {
   hallOfFame: number;
   trackSignature: number;
   mode: '2d' | '3d';
+  ready: boolean;
 }
 
 const debug = (page: Page): Promise<Debug> =>
   page.evaluate(() => (window as unknown as { __gcars: { debug: () => Debug } }).__gcars.debug());
+
+/**
+ * The page opens in 3D, and Box3D has to compile its WebAssembly before there
+ * is a world at all, so every test waits for that rather than for the app
+ * object alone.
+ */
+async function open(page: Page, url = '/'): Promise<void> {
+  await page.goto(url);
+  await page.waitForFunction(() => (window as any).__gcars?.debug().ready === true, null, {
+    timeout: 60_000,
+  });
+}
+
+/**
+ * Open one of the sidebar sections. They are `details` elements, and a
+ * `summary` is not exposed as a button, so this goes by its text.
+ */
+async function openSection(page: Page, name: string): Promise<void> {
+  await page.locator('summary', { hasText: name }).click();
+}
+
+/** Drop to the flat mode, which is instant and much cheaper to drive. */
+async function goFlat(page: Page): Promise<void> {
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '2d');
+}
 
 /** Fail the test on any console error or uncaught exception. */
 function watchForErrors(page: Page): string[] {
@@ -28,41 +55,68 @@ function watchForErrors(page: Page): string[] {
   return errors;
 }
 
-test('loads, simulates, and drives cars forward', async ({ page }) => {
+test('opens in 3D and drives cars forward', async ({ page }) => {
   const errors = watchForErrors(page);
-  await page.goto('/');
+  await open(page);
 
-  await expect(page.locator('h1')).toHaveText('Genetic Cars');
-  await page.waitForFunction(() => 'exists' in window || (window as any).__gcars);
+  await expect(page.locator('h1')).toHaveText('BoxCar3D');
 
   const initial = await debug(page);
+  expect(initial.mode).toBe('3d');
   expect(initial.alive).toBe(20);
   expect(initial.seed).toMatch(/^[a-z0-9]+$/);
 
-  // The simulation should advance on its own.
   await page.waitForFunction(() => (window as any).__gcars.debug().frame > 60, null, {
-    timeout: 10_000,
+    timeout: 20_000,
   });
-  const running = await debug(page);
-  expect(running.bestX).toBeGreaterThan(0);
+  expect((await debug(page)).bestX).toBeGreaterThan(0);
+
+  // The 3D canvas is the one on screen; the flat one waits behind it.
+  await expect(page.locator('#view3d')).toBeVisible();
+  await expect(page.locator('#view')).toBeHidden();
+  await expect(page.locator('#view3d-controls')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
 test('renders a changing scene', async ({ page }) => {
-  await page.goto('/');
-  const canvas = page.locator('#view');
+  await open(page);
+  const canvas = page.locator('#view3d');
   await expect(canvas).toBeVisible();
 
   const first = await canvas.screenshot();
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(900);
   const second = await canvas.screenshot();
 
   expect(Buffer.compare(first, second)).not.toBe(0);
 });
 
+test('draws the driver network and the gene pool', async ({ page }) => {
+  await open(page);
+  await goFlat(page);
+
+  const brain = page.locator('#brain');
+  await expect(brain).toBeVisible();
+  await expect(page.locator('#genepool')).toBeVisible();
+
+  // The network belongs to whoever the camera is on, and says so.
+  await expect(page.locator('[data-readout="brain-target"]')).toContainText('leader');
+
+  // Picking a car out of the health strip moves the panel onto that car.
+  await page.locator('#health').click({ position: { x: 100, y: 8 } });
+  await expect(page.locator('[data-readout="brain-target"]')).toHaveText('car 0');
+
+  // And it is live: activations move as the car does.
+  const first = await brain.screenshot();
+  await page.waitForTimeout(700);
+  expect(Buffer.compare(first, await brain.screenshot())).not.toBe(0);
+});
+
 test('max speed reaches a new generation quickly', async ({ page }) => {
   const errors = watchForErrors(page);
-  await page.goto('/');
+  await open(page);
+  // Measured in the flat mode: it is the cheap one, and it is what the budget
+  // in the loop was tuned against.
+  await goFlat(page);
 
   await page.getByRole('button', { name: 'max' }).click();
   await page.waitForFunction(() => (window as any).__gcars.debug().generation >= 1, null, {
@@ -85,7 +139,7 @@ test('max speed reaches a new generation quickly', async ({ page }) => {
 });
 
 test('pause halts the simulation and resume restarts it', async ({ page }) => {
-  await page.goto('/');
+  await open(page);
   const pause = page.getByRole('button', { name: 'Pause' });
   await pause.click();
 
@@ -101,12 +155,13 @@ test('pause halts the simulation and resume restarts it', async ({ page }) => {
   await page.waitForFunction(
     (frame) => (window as any).__gcars.debug().frame > frame,
     stopped.frame,
-    { timeout: 5000 },
+    { timeout: 10_000 },
   );
 });
 
 test('building a track from a seed updates the URL and restarts', async ({ page }) => {
-  await page.goto('/');
+  await open(page);
+  await openSection(page, 'Track seed');
   await page.fill('#seed-input', 'moon-buggy');
   await page.getByRole('button', { name: 'Build this track' }).click();
 
@@ -117,82 +172,69 @@ test('building a track from a seed updates the URL and restarts', async ({ page 
 
   // The same seed must rebuild the same course after a reload.
   const before = state.trackSignature;
-  await page.reload();
-  await page.waitForFunction(() => (window as any).__gcars);
+  await open(page, '/?seed=moon-buggy');
   const after = await debug(page);
   expect(after.seed).toBe('moon-buggy');
   expect(after.trackSignature).toBe(before);
 
   // A different seed must produce a different course.
+  await openSection(page, 'Track seed');
   await page.fill('#seed-input', 'ice-rink');
   await page.getByRole('button', { name: 'Build this track' }).click();
   expect((await debug(page)).trackSignature).not.toBe(before);
 });
 
 test('settings persist across a reload', async ({ page }) => {
-  await page.goto('/');
+  await open(page);
+  await openSection(page, 'Evolution');
   await page.locator('#elites').fill('6');
   await page.locator('#mutation-rate').fill('30');
   await page.waitForTimeout(100);
 
-  await page.reload();
-  await page.waitForFunction(() => (window as any).__gcars);
-
+  await open(page);
+  await openSection(page, 'Evolution');
   await expect(page.locator('#elites')).toHaveValue('6');
   await expect(page.locator('#mutation-rate')).toHaveValue('30');
 });
 
-test('switches to the 3D mode and keeps evolving', async ({ page }) => {
+test('switches to the flat mode and back', async ({ page }) => {
   const errors = watchForErrors(page);
-  await page.goto('/');
+  await open(page);
 
-  expect((await debug(page)).mode).toBe('2d');
-  await page.getByRole('button', { name: '3D', exact: true }).click();
-
-  // Box3D compiles WebAssembly and three.js is fetched on demand.
-  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '3d', null, {
-    timeout: 45_000,
-  });
-
-  const started = await debug(page);
-  expect(started.alive).toBe(20);
-
+  // Let 3D run long enough to bury a few cars.
   await page.getByRole('button', { name: 'max' }).click();
   await page.waitForFunction(() => (window as any).__gcars.debug().generation >= 1, null, {
-    timeout: 60_000,
+    timeout: 90_000,
   });
 
-  const evolved = await debug(page);
-  expect(evolved.bestX).toBeGreaterThanOrEqual(0);
-  expect(evolved.generation).toBeGreaterThanOrEqual(1);
-
-  // The 3D canvas should be the visible one now.
-  await expect(page.locator('#view3d')).toBeVisible();
-  await expect(page.locator('#view')).toBeHidden();
-
-  // The graveyard should have accumulated a marker per car that has died.
   const deaths = Number((await page.locator('[data-readout="deaths"]').textContent()) ?? '0');
   expect(deaths).toBeGreaterThanOrEqual(20);
 
-  // View controls belong to 3D only.
-  await expect(page.locator('#view3d-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Survey the graveyard' }).click();
   await page.locator('#toggle-graveyard').uncheck();
   await page.locator('#toggle-trails').uncheck();
   await page.waitForTimeout(300);
 
-  // And switching back restores the flat simulation.
-  await page.getByRole('button', { name: '2D', exact: true }).click();
-  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '2d');
+  await goFlat(page);
   await expect(page.locator('#view')).toBeVisible();
+  await expect(page.locator('#view3d')).toBeHidden();
   await expect(page.locator('#view3d-controls')).toBeHidden();
+
+  // And back again, without reloading the engine.
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '3d', null, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('#view3d')).toBeVisible();
 
   expect(errors).toEqual([]);
 });
 
 test('keeps each mode’s records to itself', async ({ page }) => {
-  await page.goto('/');
-  // Build up a 2D hall of fame first.
+  await open(page);
+  await goFlat(page);
+
+  // Build up a flat hall of fame first.
   await page.getByRole('button', { name: 'max' }).click();
   await page.waitForFunction(() => (window as any).__gcars.debug().hallOfFame >= 1, null, {
     timeout: 60_000,
@@ -204,24 +246,24 @@ test('keeps each mode’s records to itself', async ({ page }) => {
   // different scale, so a 2D score standing as the 3D record is meaningless.
   await page.getByRole('button', { name: '3D', exact: true }).click();
   await page.waitForFunction(() => (window as any).__gcars.debug().mode === '3d', null, {
-    timeout: 45_000,
+    timeout: 20_000,
   });
   expect((await debug(page)).hallOfFame).toBe(0);
 
-  // And going back restores the 2D records rather than losing them.
-  await page.getByRole('button', { name: '2D', exact: true }).click();
-  await page.waitForFunction(() => (window as any).__gcars.debug().mode === '2d');
+  // And going back restores the flat records rather than losing them.
+  await goFlat(page);
   expect((await debug(page)).hallOfFame).toBe(flat.hallOfFame);
 });
 
 test('is usable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 900 });
-  await page.goto('/');
+  await open(page);
 
   // Nothing should overflow horizontally.
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
-  await expect(page.locator('#view')).toBeVisible();
+  await expect(page.locator('#view3d')).toBeVisible();
+  await expect(page.locator('#brain')).toBeVisible();
 });

@@ -70,7 +70,7 @@ export class Renderer {
 
   /**
    * Terrain is drawn straight from the track data over the visible span, so
-   * there is no cross-frame drawing state to fall out of sync — the original
+   * there is no cross-frame drawing state to fall out of sync. The original
    * cached a "last drawn tile" index that it never reset, which made the
    * ground vanish at the start of each generation.
    */

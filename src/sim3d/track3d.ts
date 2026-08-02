@@ -6,7 +6,7 @@
  * what makes 3D its own problem: a narrow car that wins on flat ground will tip
  * over on a slope.
  *
- * `roadCrossSections` is the single source of truth for where the road is —
+ * `roadCrossSections` is the single source of truth for where the road is:
  * both the colliders and the drawn ribbon are built from it.
  */
 

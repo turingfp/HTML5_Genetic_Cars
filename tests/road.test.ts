@@ -109,7 +109,7 @@ describe('road geometry', () => {
     //
     // Checked over the opening stretch, where tilt is still small. Far along
     // the course two neighbouring tiles can differ by most of a half turn and
-    // the quad joining them genuinely folds — no winding is correct there,
+    // the quad joining them genuinely folds, so no winding is correct there,
     // which is why the road is drawn double-sided.
     const { position, normal, index } = positionsOf('winding');
     const sections = TRACK_TILE_COUNT + 1;
@@ -143,8 +143,8 @@ describe('road geometry', () => {
 
   it('places the surface where the colliders are', () => {
     // The drawn ribbon and the physics slabs are built from one set of
-    // cross-sections. When they were derived separately — the colliders taking
-    // a per-tile average of the joint banks — the physical surface sat up to
+    // cross-sections. When they were derived separately, with the colliders
+    // taking a per-tile average of the joint banks, the physical surface sat up to
     // 1.7 metres from the visible one at the road edges.
     for (const seed of ['ridge', 'alpha', 'showcase']) {
       const track = generateTrack3D(seed);

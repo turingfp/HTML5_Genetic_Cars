@@ -8,7 +8,7 @@
 
 /**
  * The subset of a snapshot the readouts need, which both the flat and the 3D
- * simulations satisfy — their snapshots differ only in how poses are shaped.
+ * simulations satisfy. Their snapshots differ only in how poses are shaped.
  */
 export interface StatsCar {
   alive: boolean;

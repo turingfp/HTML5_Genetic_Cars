@@ -55,7 +55,7 @@ export interface CarEntry<T = CarDef> {
  * Exponential rank selection: rank 0 (the best car) is most likely, and the
  * probability decays from there.
  *
- * The modulo wrap is inherited from the original — it folds the long tail of
+ * The modulo wrap is inherited from the original. It folds the long tail of
  * the exponential back onto good ranks rather than truncating it.
  */
 export function pickParentIndex(rng: Rng, populationSize: number): number {

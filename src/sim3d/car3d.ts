@@ -21,15 +21,16 @@ import {
   WHEEL_FRICTION,
   WHEEL_RESTITUTION,
 } from '../config';
+import { BrainRuntime, motorMultiplier, type Sensors } from '../ga/brain';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
-import type { Box3DBody, Box3DWorld } from './box3d';
+import { SENSOR_SPEED_SCALE, SENSOR_SPIN_SCALE } from '../sim/car';
+import type { Box3DBody, Box3DJoint, Box3DWorld } from './box3d';
 
-/** Wheels are capsules laid along z, which rolls like a rounded tyre. */
 /**
  * Half the width of a wheel, as a fraction of its radius.
  *
  * This has to scale with the radius. A fixed value made a big wheel a capsule
- * whose radius exceeded its length — geometrically a sphere, which both looked
+ * whose radius exceeded its length, which is geometrically a sphere. It looked
  * wrong and behaved wrong, rolling freely sideways instead of tracking.
  */
 const WHEEL_TREAD_RATIO = 0.3;
@@ -66,6 +67,13 @@ export class Car3D {
 
   chassis: Box3DBody | null = null;
   wheels: Box3DBody[] = [];
+  /** Last forward pass of this car's driver, kept for the visualisation. */
+  readonly brain = new BrainRuntime();
+
+  /** One per wheel, in wheel order, so the driver can change their speeds. */
+  private motors: Box3DJoint[] = [];
+  /** Which of the two outputs drives each wheel. Left and right pairs share. */
+  private motorOutput: number[] = [];
 
   alive = true;
   health = MAX_CAR_HEALTH;
@@ -125,7 +133,7 @@ export class Car3D {
 
     wheelMounts(def).forEach((mount, i) => {
       const radius = def.base.wheelRadius[mount.wheel]!;
-      world.createRevoluteJoint(chassis, this.wheels[i]!, {
+      const joint = world.createRevoluteJoint(chassis, this.wheels[i]!, {
         // The revolute hinge turns about its frame's z axis, which is exactly
         // the axle direction for a car facing along +x.
         localFrameA: { position: { x: mount.x, y: mount.y, z: mount.z } },
@@ -136,9 +144,43 @@ export class Car3D {
         // two-wheeled car would need.
         maxMotorTorque: (totalMass * -GRAVITY_Y) / radius / 2,
       });
+      this.motors.push(joint);
+      // A mount belongs to wheel 0 or wheel 1 of the silhouette, and both sides
+      // of a pair take the same output, so the car cannot steer by accident.
+      this.motorOutput.push(mount.wheel);
     });
 
     this.chassis = chassis;
+  }
+
+  /** Let the driver set the wheel speeds. See `Car.drive` in the flat mode. */
+  drive(slope: number): void {
+    const chassis = this.chassis;
+    if (!chassis || !this.alive) return;
+
+    const velocity = chassis.getLinearVelocity();
+    const spin = chassis.getAngularVelocity();
+    const q = chassis.getRotation();
+    // The body's own up vector, which is the quickest way to ask a quaternion
+    // how the car is sitting: leaning back tips it along -x, rolling tips it
+    // along z.
+    const upX = 2 * (q.x * q.y - q.z * q.w);
+    const upZ = 2 * (q.x * q.w + q.y * q.z);
+
+    const sensors: Sensors = {
+      pitch: -upX,
+      roll: upZ,
+      speed: velocity.x / SENSOR_SPEED_SCALE,
+      drop: velocity.y / SENSOR_SPEED_SCALE,
+      spin: spin.z / SENSOR_SPIN_SCALE,
+      slope,
+    };
+
+    this.brain.evaluate(this.def.base.brain, sensors);
+    for (let i = 0; i < this.motors.length; i++) {
+      const out = this.brain.output(this.motorOutput[i] ?? 0);
+      this.motors[i]!.setMotorSpeed(MOTOR_SPEED * motorMultiplier(out));
+    }
   }
 
   /**
@@ -158,7 +200,7 @@ export class Car3D {
     if (p.y > this.maxY) this.maxY = p.y;
     if (p.y < this.minY) this.minY = p.y;
 
-    // Leaving the road is instant death — there is nothing to drive on.
+    // Leaving the road is instant death, since there is nothing to drive on.
     if (Math.abs(p.z) > FALL_OFF_LATERAL || p.y < roadY - FALL_OFF_DEPTH) {
       this.fellOff = true;
       return true;
@@ -199,5 +241,7 @@ export class Car3D {
     for (const wheel of this.wheels) wheel.destroy();
     this.chassis = null;
     this.wheels = [];
+    this.motors = [];
+    this.motorOutput = [];
   }
 }

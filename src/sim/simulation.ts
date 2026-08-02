@@ -26,11 +26,12 @@ import {
   TIME_STEP,
   VELOCITY_ITERATIONS,
 } from '../config';
+import { BRAIN_NODE_COUNT } from '../ga/brain';
 import { nextGeneration, randomPopulation, type CarEntry, type CarScore, type GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import { ReplayRecorder, type Pose } from '../replay/recorder';
-import { generateTrack, type TrackDef } from './track';
+import { generateTrack, slopeAhead, type TrackDef } from './track';
 import { Car } from './car';
 
 export interface CarSnapshot {
@@ -44,6 +45,8 @@ export interface CarSnapshot {
   /** Remaining health in [0, 1]. */
   health01: number;
   maxX: number;
+  /** This car's network as it last fired. Copied, so it is safe to hold on to. */
+  activations: Float32Array;
 }
 
 export interface WorldSnapshot {
@@ -178,6 +181,14 @@ export class Simulation {
 
   /** Advance the world one fixed step. Returns true if the generation ended. */
   step(): boolean {
+    // Drivers act on what they saw at the end of the last step, then the world
+    // moves. Doing it the other way round would let a car react to a collision
+    // in the same instant it happened.
+    for (const car of this.cars) {
+      if (!car.alive || !car.chassis) continue;
+      car.drive(slopeAhead(this.track, car.chassis.getPosition().x));
+    }
+
     this.world.step(TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
     this.frame++;
 
@@ -269,6 +280,7 @@ export class Simulation {
         wheels: [emptyPose(), emptyPose()],
         health01: 0,
         maxX: 0,
+        activations: new Float32Array(BRAIN_NODE_COUNT),
       });
     }
     out.cars.length = this.cars.length;
@@ -291,6 +303,7 @@ export class Simulation {
       snap.alive = car.alive;
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;
       snap.maxX = car.maxX;
+      snap.activations.set(car.brain.activations);
 
       if (!car.alive || !car.chassis || !car.wheels) continue;
 

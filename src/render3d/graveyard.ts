@@ -2,7 +2,7 @@
  * The graveyard: a marker wherever a car died, kept across generations.
  *
  * This is the search made visible. Individual runs are forgettable, but the
- * accumulated deaths show the shape of the problem — dense clusters pile up at
+ * accumulated deaths show the shape of the problem. Dense clusters pile up at
  * the obstacles the population cannot yet pass, and the frontier of bright,
  * recent markers creeps to the right as evolution finds a way through.
  *

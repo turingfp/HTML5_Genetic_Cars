@@ -3,8 +3,8 @@
  * generation.
  *
  * The original plotted raw scores directly as pixel coordinates on a 200px
- * canvas, so once cars scored above 200 — which happens within a few dozen
- * generations — the interesting part of the graph was off-screen. This scales
+ * canvas, so once cars scored above 200, which happens within a few dozen
+ * generations, the interesting part of the graph was off-screen. This scales
  * to the data.
  */
 

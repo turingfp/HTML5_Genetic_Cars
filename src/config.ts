@@ -2,7 +2,7 @@
  * Every tunable constant, carried over from the original `cawro.js`.
  *
  * The numbers here define how the simulation *feels*, so they are ported
- * verbatim — including the quirks. Where the original name was misleading
+ * verbatim, including the quirks. Where the original name was misleading
  * (e.g. `wheelMaxRadius` was really the width of the random range, not a
  * maximum), the constant is renamed and the true range is documented.
  */
@@ -81,7 +81,7 @@ export const TILE_TILT_GAIN = 1.5;
  *
  * The formula above reaches 2.25 rad (129 degrees) on late tiles, which tips
  * a tile past vertical so the track doubles back on itself. That makes the
- * surface no longer a function of x — it breaks the terrain fill, the visible
+ * surface no longer a function of x. That breaks the terrain fill, the visible
  * range lookup and the distance markers, and an overhang is not something a
  * car can drive along anyway. Clamping keeps the course brutally steep while
  * guaranteeing it always advances.
@@ -132,7 +132,7 @@ export const MAX_CAR_HEALTH = PHYSICS_HZ * 10;
  *
  * The original refilled the bar completely for any gain over two centimetres,
  * which meant a car creeping forward at a millimetre a second topped itself up
- * every few seconds and never died — one of them could hold up a whole
+ * every few seconds and never died, so one of them could hold up a whole
  * generation indefinitely.
  */
 export const HEALTH_PER_METRE = 240;
@@ -157,7 +157,7 @@ export const MAX_GENERATION_FRAMES = MAX_GENERATION_SECONDS * PHYSICS_HZ;
  * The per-car speed rule only asks that each car keeps gaining its *own* new
  * ground, which a pack of slow cars can satisfy indefinitely while the furthest
  * point reached never moves. Measured on one track, a 3D generation ran the
- * full 90 second cap with its last real progress at 9 seconds — eighty seconds
+ * full 90 second cap with its last real progress at 9 seconds, so eighty seconds
  * of watching nothing happen. This ends the round shortly after the frontier
  * stops advancing, which is the moment the round stopped being interesting.
  */

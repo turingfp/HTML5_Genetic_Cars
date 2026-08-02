@@ -24,7 +24,15 @@ import {
   WHEEL_FRICTION,
   WHEEL_RESTITUTION,
 } from '../config';
+import { BrainRuntime, motorMultiplier, type Sensors } from '../ga/brain';
 import type { CarDef } from '../ga/genome';
+
+/**
+ * What counts as "fast" and "spinning hard" to a car's senses, so the inputs
+ * arrive in roughly the same range as everything else the network sees.
+ */
+export const SENSOR_SPEED_SCALE = 8;
+export const SENSOR_SPIN_SCALE = 6;
 
 export class Car {
   readonly def: CarDef;
@@ -33,6 +41,10 @@ export class Car {
 
   chassis: Body | null = null;
   wheels: [Body, Body] | null = null;
+  /** Last forward pass of this car's driver, kept for the visualisation. */
+  readonly brain = new BrainRuntime();
+
+  private motors: RevoluteJoint[] = [];
 
   alive = true;
   health = MAX_CAR_HEALTH;
@@ -93,26 +105,53 @@ export class Car {
 
     for (let i = 0; i < 2; i++) {
       const anchor = def.vertices[def.wheelVertex[i]!]!;
-      world.createJoint(
-        new RevoluteJoint(
-          {
-            // Torque scales with the car's own weight, so heavy cars are not
-            // automatically hopeless.
-            maxMotorTorque: (totalMass * -GRAVITY_Y) / def.wheelRadius[i]!,
-            motorSpeed: MOTOR_SPEED,
-            enableMotor: true,
-          },
-          chassis,
-          wheels[i]!,
-          // The wheel already sits on its mounting point, so the world anchor
-          // resolves to the chassis vertex and the wheel's own centre.
-          new Vec2(CAR_SPAWN_X + anchor.x, CAR_SPAWN_Y + anchor.y),
-        ),
+      const joint = new RevoluteJoint(
+        {
+          // Torque scales with the car's own weight, so heavy cars are not
+          // automatically hopeless.
+          maxMotorTorque: (totalMass * -GRAVITY_Y) / def.wheelRadius[i]!,
+          motorSpeed: MOTOR_SPEED,
+          enableMotor: true,
+        },
+        chassis,
+        wheels[i]!,
+        // The wheel already sits on its mounting point, so the world anchor
+        // resolves to the chassis vertex and the wheel's own centre.
+        new Vec2(CAR_SPAWN_X + anchor.x, CAR_SPAWN_Y + anchor.y),
       );
+      world.createJoint(joint);
+      // Held on to so the driver can change the speed every step.
+      this.motors.push(joint);
     }
 
     this.chassis = chassis;
     this.wheels = [wheels[0]!, wheels[1]!];
+  }
+
+  /**
+   * Let the driver set the wheel speeds for this step.
+   *
+   * `slope` is how steeply the ground rises just ahead of the car; the
+   * simulation looks it up, since only it holds the terrain.
+   */
+  drive(slope: number): void {
+    const chassis = this.chassis;
+    if (!chassis || !this.alive) return;
+
+    const velocity = chassis.getLinearVelocity();
+    const sensors: Sensors = {
+      pitch: Math.sin(chassis.getAngle()),
+      roll: 0,
+      speed: velocity.x / SENSOR_SPEED_SCALE,
+      drop: velocity.y / SENSOR_SPEED_SCALE,
+      spin: chassis.getAngularVelocity() / SENSOR_SPIN_SCALE,
+      slope,
+    };
+
+    this.brain.evaluate(this.def.brain, sensors);
+    for (let i = 0; i < this.motors.length; i++) {
+      this.motors[i]!.setMotorSpeed(MOTOR_SPEED * motorMultiplier(this.brain.output(i)));
+    }
   }
 
   /** Advance this car's bookkeeping by one physics step. Returns true if it died. */
@@ -162,5 +201,6 @@ export class Car {
     }
     this.chassis = null;
     this.wheels = null;
+    this.motors = [];
   }
 }

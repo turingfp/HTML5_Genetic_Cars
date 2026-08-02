@@ -1,9 +1,9 @@
 {
-  "name": "genetic-cars",
+  "name": "boxcar3d",
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "A genetic algorithm car evolver in HTML5 canvas",
+  "description": "Cars that evolve their shape and the neural network that drives them, on Box3D physics",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

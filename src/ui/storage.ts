@@ -9,14 +9,14 @@ import type { GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
 import type { Speed } from '../config';
 
-const SETTINGS_KEY = 'genetic-cars:settings:v1';
+const SETTINGS_KEY = 'boxcar3d:settings:v1';
 
 /**
  * Records are kept per mode. A flat car and a four-wheeled one are solving
  * different problems on different scales, so a single leaderboard would let a
  * 2D score stand as the 3D record and vice versa.
  */
-const hallKey = (mode: string) => `genetic-cars:hall-of-fame:${mode}:v2`;
+const hallKey = (mode: string) => `boxcar3d:hall-of-fame:${mode}:v1`;
 
 export interface Settings extends GAParams {
   speed: Speed;

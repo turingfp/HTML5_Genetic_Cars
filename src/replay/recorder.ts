@@ -2,7 +2,7 @@
  * Replay recording.
  *
  * A car's shape never changes, so a replay only needs the pose of the chassis
- * and the two wheels per frame — nine floats. The original stored every
+ * and the two wheels per frame, so nine floats. The original stored every
  * polygon of every car every frame, which allocated tens of thousands of
  * objects per second and grew without bound.
  */

@@ -1,7 +1,7 @@
 /**
  * The genome: what a car *is*, independent of any physics engine.
  *
- * Everything here is pure — the random source is passed in — so evolution can
+ * Everything here is pure, with the random source passed in, so evolution can
  * be unit-tested and replayed deterministically.
  */
 
@@ -16,6 +16,17 @@ import {
   WHEEL_RADIUS_RANGE,
 } from '../config';
 import type { Rng } from '../core/rng';
+import {
+  cloneBrain,
+  crossoverBrain,
+  mutateBrain,
+  randomBrain,
+  type Brain,
+} from './brain';
+import { mutateValue, type MutationParams } from './mutation';
+
+export { mutateValue };
+export type { MutationParams };
 
 export interface Vec2 {
   x: number;
@@ -31,13 +42,8 @@ export interface CarDef {
   wheelVertex: [number, number];
   /** Eight chassis corners, one per octant, in counter-clockwise order. */
   vertices: Vec2[];
-}
-
-export interface MutationParams {
-  /** Probability that any single gene mutates. */
-  rate: number;
-  /** Mutation window width as a fraction of the gene's full range. */
-  size: number;
+  /** The network that drives the wheels. Its weights evolve with the body. */
+  brain: Brain;
 }
 
 /**
@@ -99,6 +105,7 @@ export function randomCar(rng: Rng): CarDef {
     ],
     wheelVertex: [wheelVertex1, wheelVertex2],
     vertices,
+    brain: randomBrain(rng),
   };
 }
 
@@ -108,6 +115,7 @@ export function cloneCar(def: CarDef): CarDef {
     wheelDensity: [def.wheelDensity[0], def.wheelDensity[1]],
     wheelVertex: [def.wheelVertex[0], def.wheelVertex[1]],
     vertices: def.vertices.map((v) => ({ x: v.x, y: v.y })),
+    brain: cloneBrain(def.brain),
   };
 }
 
@@ -138,30 +146,17 @@ export function crossover(rng: Rng, a: CarDef, b: CarDef): CarDef {
   }
   const wheelDensity: [number, number] = [pick(12).wheelDensity[0], pick(13).wheelDensity[1]];
 
-  const child: CarDef = { wheelRadius, wheelDensity, wheelVertex, vertices };
+  const child: CarDef = {
+    wheelRadius,
+    wheelDensity,
+    wheelVertex,
+    vertices,
+    // The driver is inherited weight by weight rather than by the body's swap
+    // points, since network weights have no natural ordering.
+    brain: crossoverBrain(rng, a.brain, b.brain),
+  };
   repairWheelVertices(rng, child);
   return child;
-}
-
-/**
- * Nudge a value within a window of `range * size` centred on the old value,
- * clamped so the result stays inside [min, min + range).
- *
- * At size = 1 the window covers the whole range, which is why the default
- * "mutation size" of 100% behaves like a random re-roll.
- */
-export function mutateValue(
-  rng: Rng,
-  old: number,
-  min: number,
-  range: number,
-  size: number,
-): number {
-  const span = range * size;
-  let base = old - 0.5 * span;
-  if (base < min) base = min;
-  if (base > min + (range - span)) base = min + (range - span);
-  return base + span * rng();
 }
 
 /** Mutate one chassis vertex, preserving its octant's sign convention. */
@@ -192,7 +187,7 @@ export function mutate(rng: Rng, def: CarDef, params: MutationParams): CarDef {
   }
 
   // Wheel placement is disruptive, so a small mutation size also throttles how
-  // often it happens — the original's trick for "many small mutations" mode.
+  // often it happens, which was the original's trick for "many small mutations".
   const placementRate = Math.min(size, rate);
   for (const i of [0, 1] as const) {
     if (rng() < placementRate) {
@@ -220,6 +215,8 @@ export function mutate(rng: Rng, def: CarDef, params: MutationParams): CarDef {
   for (let i = 0; i < CHASSIS_VERTEX_COUNT; i++) {
     mutateVertex(rng, def, i, rate, size);
   }
+
+  mutateBrain(rng, def.brain, params);
 
   return def;
 }

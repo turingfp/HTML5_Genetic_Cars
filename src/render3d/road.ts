@@ -146,6 +146,10 @@ export function buildRoadGeometry(track: Track3D): BufferGeometry {
   // way round or every face ends up looking at the ground.
   const indices: number[] = [];
   for (let i = 0; i + 1 < count; i++) {
+    // Segment i spans tile i. Emitting no faces for a gap tile is what makes
+    // the hole visible; the vertices stay put and cost nothing, and both
+    // neighbouring segments keep their own end caps.
+    if (!track.profile.tiles[i]?.solid) continue;
     const t = TOP + i * 2;
     const tn = TOP + (i + 1) * 2;
     indices.push(t, t + 1, tn, t + 1, tn + 1, tn);

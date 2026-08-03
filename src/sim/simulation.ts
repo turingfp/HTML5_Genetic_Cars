@@ -168,6 +168,9 @@ export class Simulation {
     this.trackBodies = [];
 
     for (const tile of this.track.tiles) {
+      // A gap keeps its geometry so every lookup along the surface still
+      // works, but there is deliberately nothing here to drive on.
+      if (!tile.solid) continue;
       const [a, b, c, d] = tile.vertices;
       // Rebuild the tile as a centred, rotated box: planck wants a local shape
       // plus a transform rather than world-space corners.

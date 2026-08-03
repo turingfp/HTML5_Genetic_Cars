@@ -99,21 +99,39 @@ export class Renderer {
 
     const floor = track.minY - 40;
 
-    ctx.beginPath();
-    ctx.moveTo(points[start]!.x, floor);
-    for (let i = start; i <= end; i++) {
-      ctx.lineTo(points[i]!.x, points[i]!.y);
+    // Surface point i is the left edge of tile i, so a run of solid tiles
+    // [from, to) is bounded by surface points from and to. Ground is drawn one
+    // run at a time rather than as a single polygon: a gap has to be a real
+    // hole with two edges you can see the bottom of, not a dip in a continuous
+    // skyline.
+    const ground = new Path2D();
+    const surfaceLine = new Path2D();
+    let runStart = -1;
+
+    const closeRun = (from: number, to: number) => {
+      if (to <= from) return;
+      ground.moveTo(points[from]!.x, floor);
+      for (let i = from; i <= to; i++) ground.lineTo(points[i]!.x, points[i]!.y);
+      ground.lineTo(points[to]!.x, floor);
+      ground.closePath();
+
+      surfaceLine.moveTo(points[from]!.x, points[from]!.y);
+      for (let i = from + 1; i <= to; i++) surfaceLine.lineTo(points[i]!.x, points[i]!.y);
+    };
+
+    for (let tile = start; tile <= end; tile++) {
+      const solid = track.tiles[tile]?.solid ?? false;
+      if (solid && runStart < 0) runStart = tile;
+      if (!solid && runStart >= 0) {
+        closeRun(runStart, tile);
+        runStart = -1;
+      }
     }
-    ctx.lineTo(points[end]!.x, floor);
-    ctx.closePath();
+    if (runStart >= 0) closeRun(runStart, end);
 
     // Clearly darker than the sky's lower stop, so the horizon always reads.
     ctx.fillStyle = '#0c1526';
-    ctx.fill();
-
-    const surfaceLine = new Path2D();
-    surfaceLine.moveTo(points[start]!.x, points[start]!.y);
-    for (let i = start + 1; i <= end; i++) surfaceLine.lineTo(points[i]!.x, points[i]!.y);
+    ctx.fill(ground);
 
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';

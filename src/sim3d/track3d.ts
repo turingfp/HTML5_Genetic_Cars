@@ -12,7 +12,8 @@
 
 import { MAX_ROAD_BANK, ROAD_BANK_GAIN, ROAD_HALF_WIDTH } from '../config';
 import { rngFromSeed } from '../core/rng';
-import { generateTrack, type TrackDef } from '../sim/track';
+import { generateTrackFromSpec, type TrackDef } from '../sim/track';
+import { defaultSpec, normaliseSpec, type TrackSpec } from '../track/spec';
 
 /** How far the camber may change from one joint to the next. */
 const BANK_STEP = 0.06;
@@ -21,6 +22,8 @@ export type Vec3Tuple = [number, number, number];
 
 export interface Track3D {
   seed: string;
+  /** The design this road was generated from. */
+  spec: TrackSpec;
   /** The shared 2D profile: hills, surface polyline, bounds. */
   profile: TrackDef;
   /**
@@ -37,7 +40,13 @@ export interface Track3D {
 }
 
 export function generateTrack3D(seed: string): Track3D {
-  const profile = generateTrack(seed);
+  return generateTrack3DFromSpec(defaultSpec(seed));
+}
+
+export function generateTrack3DFromSpec(input: TrackSpec): Track3D {
+  const spec = normaliseSpec(input);
+  const profile = generateTrackFromSpec(spec);
+  const seed = spec.seed;
   // A separate stream, so banking does not disturb the shared hill profile.
   const rng = rngFromSeed(`${seed}:bank`);
   const count = profile.tiles.length;
@@ -49,13 +58,13 @@ export function generateTrack3D(seed: string): Track3D {
   const joints: number[] = [];
   let bank = 0;
   for (let j = 0; j <= count; j++) {
-    const envelope = ROAD_BANK_GAIN * (j / count);
+    const envelope = ROAD_BANK_GAIN * spec.bank * (j / count);
     bank += (rng() * 2 - 1) * BANK_STEP;
     bank = Math.max(-envelope, Math.min(envelope, bank));
     joints.push(Math.max(-MAX_ROAD_BANK, Math.min(MAX_ROAD_BANK, bank)));
   }
 
-  return { seed, profile, joints, halfWidth: ROAD_HALF_WIDTH };
+  return { seed, spec, profile, joints, halfWidth: ROAD_HALF_WIDTH * spec.width };
 }
 
 /** Rotate a local offset by a quaternion: v + 2w(qv × v) + 2qv × (qv × v). */

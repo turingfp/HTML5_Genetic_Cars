@@ -136,6 +136,8 @@ export class Simulation3D {
     const sections = roadCrossSections(this.track);
 
     for (let k = 0; k + 1 < sections.length; k++) {
+      // Section k spans tile k, so a gap tile simply gets no slab.
+      if (!this.track.profile.tiles[k]?.solid) continue;
       const a = sections[k]!;
       const b = sections[k + 1]!;
       const center = {

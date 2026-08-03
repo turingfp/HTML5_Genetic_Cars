@@ -135,6 +135,45 @@ export function unpackCar(raw: unknown): CarDef | null {
   return def;
 }
 
+/**
+ * Check a car that came out of storage rather than off the network.
+ *
+ * Saved records are untrusted input too, which was not obvious until a hall of
+ * fame written by an older version of the genome reached the thumbnail
+ * renderer and took the whole application down before it drew a frame. A
+ * stored car is exactly as suspect as a stranger's: it may predate a gene, or
+ * have been edited by hand, or come from another tab running a different
+ * build. So it goes through the same validator, by way of the wire form.
+ */
+export function readStoredCar(raw: unknown): CarDef | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const stored = raw as Partial<CarDef>;
+
+  // Rebuilt field by field rather than packed, because packing a malformed
+  // record is itself what throws.
+  const spokes: number[] = [];
+  if (!Array.isArray(stored.spokes)) return null;
+  for (const spoke of stored.spokes) {
+    if (!spoke || typeof spoke !== 'object') return null;
+    spokes.push((spoke as Spoke).angle, (spoke as Spoke).length);
+  }
+
+  const wheels: number[] = [];
+  if (!Array.isArray(stored.wheels)) return null;
+  for (const wheel of stored.wheels) {
+    if (!wheel || typeof wheel !== 'object') return null;
+    const w = wheel as WheelDef;
+    wheels.push(w.radius, w.density, w.vertex);
+  }
+
+  return unpackCar({
+    s: spokes,
+    w: wheels,
+    d: stored.chassisDensity as number,
+    b: (stored.brain as { weights?: number[] } | undefined)?.weights as number[],
+  });
+}
+
 export function unpackCar3D(raw: unknown): Car3DDef | null {
   const base = unpackCar(raw);
   if (!base) return null;

@@ -6,6 +6,7 @@
  */
 
 import type { GAParams } from '../ga/evolution';
+import { readStoredCar } from '../net/wire';
 import type { CarDef } from '../ga/genome';
 import type { Speed } from '../config';
 
@@ -57,9 +58,26 @@ export function saveSettings(settings: Settings): void {
   write(SETTINGS_KEY, settings);
 }
 
+/**
+ * Saved records, with anything unusable dropped.
+ *
+ * Every car is rebuilt through the same validator the network uses. Checking
+ * only that `def` was present was not enough: a hall of fame written before a
+ * gene existed reached the thumbnail renderer, threw inside the application's
+ * constructor, and took the page down before it drew a frame. A stored record
+ * is untrusted input like any other.
+ */
 export function loadHallOfFame(mode: string): HallOfFameEntry[] {
   const entries = read<HallOfFameEntry[]>(hallKey(mode)) ?? [];
-  return entries.filter((e) => e && e.def && Number.isFinite(e.score));
+  if (!Array.isArray(entries)) return [];
+  const kept: HallOfFameEntry[] = [];
+  for (const entry of entries) {
+    if (!entry || !Number.isFinite(entry.score)) continue;
+    const def = readStoredCar(entry.def);
+    if (!def) continue;
+    kept.push({ ...entry, def });
+  }
+  return kept;
 }
 
 export function saveHallOfFame(mode: string, entries: HallOfFameEntry[]): void {

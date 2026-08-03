@@ -110,7 +110,10 @@ export class Workshop {
     );
 
     const row = document.createElement('div');
-    row.className = 'seed-row';
+    // Not `seed-row`: that one holds an input and a small icon button and
+    // refuses to shrink either, so two full-width labels shot 342 pixels past
+    // the edge of a phone.
+    row.className = 'button-row';
     row.append(
       this.button('Random', 'workshop-random', () => {
         this.def = randomCar(rngFromSeed(String(Math.random())));

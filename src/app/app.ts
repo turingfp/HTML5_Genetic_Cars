@@ -52,6 +52,7 @@ import { GenePool, type GenePoolCar } from '../render/genepool';
 import { Minimap } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { Ghost } from '../replay/ghost';
+import { Ghost3D } from '../replay/ghost3d';
 import { Simulation, createSnapshot, type WorldSnapshot } from '../sim/simulation';
 import { Leaderboard } from '../ui/leaderboard';
 import { Panel } from '../ui/panel';
@@ -122,6 +123,8 @@ export class App {
   private readouts: Readouts;
   private panel: Panel;
   private ghost = new Ghost();
+  /** The same idea in 3D, which is the mode this opens in. */
+  private ghost3d = new Ghost3D();
   private banner: HTMLElement;
   /** Why 3D last refused to start, if it did. */
   private failure3d: string | null = null;
@@ -351,6 +354,9 @@ export class App {
   private step(): void {
     if (this.mode === '3d') {
       this.sim3d?.step();
+      // One physics step of ghost, so it keeps pace at every speed setting
+      // including max mode, where many steps happen per drawn frame.
+      this.ghost3d.advance(1);
       return;
     }
     if (this.replaying) {
@@ -441,6 +447,7 @@ export class App {
 
     sim.snapshot(this.snapshot3d);
     renderer.draw(sim.track, this.snapshot3d, dt);
+    renderer.drawGhost(this.ghost3d.current());
     this.minimap.draw(
       sim.track.profile,
       this.markersFrom3D(),
@@ -560,6 +567,7 @@ export class App {
 
     // Each generation races the ghost from the start line again.
     this.ghost.rewind();
+    this.ghost3d.rewind();
 
     this.evaluations += scores.length;
     this.medalBar.update(sorted[0]!.distance, this.trackLength);
@@ -712,6 +720,8 @@ export class App {
     this.records['3d'].history = [];
     this.chart.draw(this.current.history);
     this.ghost.clear();
+    this.ghost3d.clear();
+    this.renderer3d?.clearGhost();
     this.minimap.exploredX = 0;
     this.replaying = false;
     this.panel.setReplaying(false);
@@ -920,6 +930,9 @@ export class App {
         else this.flashBanner('3D view is back.');
       };
       this.sim3d.onCarDeath = (car) => {
+        const recorder = this.sim3d?.recorders[this.sim3d.cars.indexOf(car)];
+        // A finished run becomes the ghost if it beat everything before it.
+        if (recorder) this.ghost3d.consider(recorder, car.def, car.score, this.sim3d!.generation);
         if (!car.deathPosition) return;
         this.renderer3d?.addDeath({
           // Along the course and across the road as it actually died, but

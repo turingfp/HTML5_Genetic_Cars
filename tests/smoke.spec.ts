@@ -32,11 +32,18 @@ async function open(page: Page, url = '/'): Promise<void> {
 }
 
 /**
- * Open one of the sidebar sections. They are `details` elements, and a
- * `summary` is not exposed as a button, so this goes by its text.
+ * Make sure one of the sidebar sections is open.
+ *
+ * They are `details` elements, and a `summary` is not exposed as a button, so
+ * this goes by its text. Idempotent on purpose: several of them open by
+ * default now, and a helper called "open" that toggles would close them.
  */
 async function openSection(page: Page, name: string): Promise<void> {
-  await page.locator('summary', { hasText: name }).click();
+  const summary = page.locator('summary', { hasText: name });
+  const details = summary.locator('xpath=..');
+  if (await details.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await summary.click();
+  await details.evaluate((el) => (el as HTMLDetailsElement).open);
 }
 
 /** Drop to the flat mode, which is instant and much cheaper to drive. */

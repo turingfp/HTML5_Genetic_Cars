@@ -132,8 +132,6 @@ test.describe('the room', () => {
     page.on('request', (r) => requests.push(r.url()));
 
     await open(page);
-    await page.locator('summary', { hasText: 'Room' }).click();
-
     await expect(page.locator('#room-status')).toHaveText('Not connected.');
     // The point of opt-in: nothing should have reached for a relay, and the
     // transport should not even have been downloaded.
@@ -144,8 +142,6 @@ test.describe('the room', () => {
 
   test('offers a name and a migration setting before connecting', async ({ page }) => {
     await open(page);
-    await page.locator('summary', { hasText: 'Room' }).click();
-
     await expect(page.locator('#room-name')).not.toHaveValue('');
     await expect(page.locator('#room-join')).toHaveText('Join the room');
     // Migration is a knob you can see before you commit to anything.

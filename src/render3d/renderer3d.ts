@@ -34,6 +34,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CAMERA_SMOOTHING, PHYSICS_HZ } from '../config';
 import { detectQuality } from '../core/device';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
+import type { Ghost3DFrame } from '../replay/ghost3d';
 import { lineageHex, lineageHue } from '../ga/lineage';
 import { wheelHalfTread } from '../sim3d/car3d';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
@@ -45,6 +46,20 @@ import { Trails } from './trails';
 const ELITE_COLOR = 0x60a5fa;
 const NORMAL_COLOR = 0xf87171;
 const LEADER_COLOR = 0xfde047;
+/** Pale and cold, so the ghost reads as a memory rather than a rival. */
+const GHOST_COLOR = 0x93c5fd;
+
+/** Free every geometry and material hanging off a group, then empty it. */
+function disposeGroup(group: Group): void {
+  group.traverse((node) => {
+    const mesh = node as Mesh;
+    mesh.geometry?.dispose?.();
+    const material = mesh.material;
+    if (Array.isArray(material)) for (const m of material) m.dispose();
+    else material?.dispose?.();
+  });
+  group.clear();
+}
 
 interface CarMeshes {
   group: Group;
@@ -91,6 +106,14 @@ export class Renderer3D {
   contextLost = false;
   /** Called when the context is lost or comes back, so the app can say so. */
   onContextChange: ((lost: boolean) => void) | null = null;
+  /**
+   * The best run on this track, replayed translucent alongside the living.
+   *
+   * Rebuilt only when the ghost's car changes, since the geometry is fixed for
+   * a given genome and a ghost may hold the same one for many generations.
+   */
+  private ghost: { group: Group; wheels: Mesh[]; def: Car3DDef | null } | null = null;
+
   readonly graveyard = new Graveyard();
   readonly trails = new Trails();
 
@@ -186,6 +209,7 @@ export class Renderer3D {
     this.observer?.disconnect();
     this.observer = null;
     this.clearCars();
+    this.clearGhost();
     this.wheelMaterial.dispose();
     this.hubMaterial.dispose();
     this.road?.geometry.dispose();
@@ -276,6 +300,14 @@ export class Renderer3D {
    * carries a hub and a marker as children, and disposing just the wheel left
    * eight geometries per car behind on the GPU every generation.
    */
+  /** Drop the ghost's meshes, when it changes or the renderer goes away. */
+  clearGhost(): void {
+    if (!this.ghost) return;
+    this.scene.remove(this.ghost.group);
+    disposeGroup(this.ghost.group);
+    this.ghost = null;
+  }
+
   private clearCars(): void {
     for (const car of this.cars) {
       this.scene.remove(car.group);
@@ -343,6 +375,68 @@ export class Renderer3D {
       this.scene.add(group);
       this.cars.push({ group, chassis, wheels, material });
     }
+  }
+
+  /**
+   * Place the ghost, building its body the first time it appears or whenever
+   * the run being replayed changes.
+   */
+  drawGhost(frame: Ghost3DFrame | null): void {
+    if (!frame) {
+      if (this.ghost) this.ghost.group.visible = false;
+      return;
+    }
+
+    if (!this.ghost || this.ghost.def !== frame.def) {
+      this.clearGhost();
+      this.ghost = this.buildGhost(frame.def);
+      this.scene.add(this.ghost.group);
+    }
+
+    const g = this.ghost!;
+    g.group.visible = true;
+    g.group.position.set(frame.position.x, frame.position.y, frame.position.z);
+    g.group.quaternion.set(
+      frame.rotation.x,
+      frame.rotation.y,
+      frame.rotation.z,
+      frame.rotation.w,
+    );
+    // No spin angle is recorded, so it is derived: distance over radius is
+    // exactly how far a rolling wheel has turned.
+    for (let i = 0; i < g.wheels.length; i++) {
+      const wheel = g.wheels[i]!;
+      const radius = wheel.userData['radius'] as number;
+      wheel.rotation.z = -frame.distance / Math.max(radius, 0.01);
+    }
+  }
+
+  private buildGhost(def: Car3DDef): { group: Group; wheels: Mesh[]; def: Car3DDef } {
+    const group = new Group();
+    // Translucent and unlit, so it reads as a memory rather than a competitor,
+    // and casts no shadow: a shadow would imply something is there.
+    const material = new MeshBasicMaterial({
+      color: GHOST_COLOR,
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false,
+    });
+    const points = chassisHullPoints(def).map((p) => new Vector3(p.x, p.y, p.z));
+    group.add(new Mesh(new ConvexGeometry(points), material));
+
+    const wheels: Mesh[] = [];
+    for (const mount of wheelMounts(def)) {
+      const radius = def.base.wheels[mount.wheel]!.radius;
+      const geometry = new CylinderGeometry(radius, radius, wheelHalfTread(radius) * 2, 12);
+      geometry.rotateX(Math.PI / 2);
+      const wheel = new Mesh(geometry, material);
+      wheel.position.set(mount.x, mount.y, mount.z);
+      wheel.userData['radius'] = radius;
+      wheels.push(wheel);
+      group.add(wheel);
+    }
+    group.renderOrder = 2;
+    return { group, wheels, def };
   }
 
   draw(track: Track3D, snapshot: World3DSnapshot, dt: number): void {

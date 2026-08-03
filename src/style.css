@@ -511,6 +511,18 @@ input[type="text"] {
   padding: 8px 11px;
 }
 
+/* Buttons side by side that must give way rather than overflow. */
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.button-row button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* ── Collapsible sections ───────────────────────────────────────────────── */
 
 details {

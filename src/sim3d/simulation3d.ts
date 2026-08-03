@@ -39,6 +39,7 @@ import {
   type GAParams,
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
+import { Replay3DRecorder } from '../replay/recorder3d';
 import { slopeProbes, surfaceIndexAt, type SlopeProbes } from '../sim/track';
 import {
   generateTrack3D,
@@ -88,6 +89,8 @@ export class Simulation3D {
   private readonly probes: SlopeProbes = { near: 0, mid: 0, far: 0 };
 
   private scores: CarScore<Car3DDef>[] = [];
+  /** One per car, so whichever wins can become the ghost. */
+  recorders: Replay3DRecorder[] = [];
   private roadBodies: Box3DBody[] = [];
   private rng: Rng;
 
@@ -220,6 +223,15 @@ export class Simulation3D {
     }
   }
 
+  /** Capture the pose of every living car, for the ghost. */
+  private record(): void {
+    for (let i = 0; i < this.cars.length; i++) {
+      const car = this.cars[i]!;
+      if (!car.alive || !car.chassis) continue;
+      this.recorders[i]?.add(car.chassis.getPosition(), car.chassis.getRotation());
+    }
+  }
+
   /** Height of the road under a given x, used for the fell-off check. */
   private roadHeightAt(x: number): number {
     const surface = this.track.profile.surface;
@@ -229,6 +241,7 @@ export class Simulation3D {
 
   private spawn(entries: CarEntry<Car3DDef>[]): void {
     this.cars = entries.map((e) => new Car3D(this.world, e.def, e.index, e.isElite, e.lineage));
+    this.recorders = this.cars.map(() => new Replay3DRecorder());
     this.nextLineage = Math.max(this.nextLineage, ...entries.map((e) => e.lineage + 1));
     this.aliveCount = this.cars.length;
     this.scores = [];
@@ -248,6 +261,7 @@ export class Simulation3D {
 
     this.world.step(TIME_STEP, SUB_STEP_COUNT);
     this.frame++;
+    this.record();
 
     for (const car of this.cars) {
       if (!car.alive) continue;

@@ -178,17 +178,29 @@ test('building a track from a seed updates the URL and restarts', async ({ page 
   expect(state.seed).toBe('moonbuggy');
   expect(state.generation).toBe(0);
 
-  // The same seed must rebuild the same course after a reload.
+  // The link the page just put in the address bar must rebuild this course.
+  // It carries the whole design, which matters now that the page opens on the
+  // daily: typing a seed changes the seed and leaves today's other knobs
+  // alone, so "seed plus nothing" is a different track from the one on screen.
   const before = state.trackSignature;
-  await open(page, '/?seed=moonbuggy');
+  const link = page.url();
+  expect(link).toContain('track=');
+  await open(page, link);
   const after = await debug(page);
   expect(after.seed).toBe('moonbuggy');
   expect(after.trackSignature).toBe(before);
 
+  // A bare seed is the older form of link and still means the classic course,
+  // deterministically, whatever day it is opened on.
+  await open(page, '/?seed=moonbuggy');
+  const classic = await debug(page);
+  await open(page, '/?seed=moonbuggy');
+  expect((await debug(page)).trackSignature).toBe(classic.trackSignature);
+
   // A different seed must produce a different course.
   await page.fill('#seed-input', 'icerink');
   await page.getByRole('button', { name: 'Drive this track' }).click();
-  expect((await debug(page)).trackSignature).not.toBe(before);
+  expect((await debug(page)).trackSignature).not.toBe(classic.trackSignature);
 });
 
 test('settings persist across a reload', async ({ page }) => {

@@ -35,12 +35,14 @@ test.describe('the track editor', () => {
   test('shows a code that changes with the design', async ({ page }) => {
     await open(page);
     const before = await page.locator('#track-code').inputValue();
-    expect(before).toMatch(/^t1/);
+    // Any version, not a particular one: codes gain a version when the knobs
+    // change shape, and this test is about the code tracking the design.
+    expect(before).toMatch(/^t\d/);
 
     await knob(page, GAPS).fill('0.15');
     const after = await page.locator('#track-code').inputValue();
     expect(after).not.toBe(before);
-    expect(after).toMatch(/^t1/);
+    expect(after).toMatch(/^t\d/);
     // Short enough to paste into a chat message without it wrapping.
     expect(after.length).toBeLessThanOrEqual(24);
   });
@@ -90,7 +92,7 @@ test.describe('the track editor', () => {
     const mine = (await debug(page)).trackSignature;
 
     const shared = page.url();
-    expect(shared).toContain('track=t1');
+    expect(shared).toMatch(/track=t\d/);
 
     await open(page, shared);
     expect((await debug(page)).trackSignature).toBe(mine);

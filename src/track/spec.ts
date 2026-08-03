@@ -11,7 +11,7 @@
  * terrain after the knobs change shape.
  */
 
-import type { Rng } from '../core/rng';
+import { rngFromSeed, type Rng } from '../core/rng';
 
 /** A track design. Everything needed to reproduce the terrain exactly. */
 export interface TrackSpec {
@@ -257,6 +257,56 @@ export function randomSpec(rng: Rng, seed: string): TrackSpec {
     bank: rng() * 1.6,
     width: 0.6 + rng() * 1.1,
   });
+}
+
+/* ── The daily ───────────────────────────────────────────────────────────── */
+
+/**
+ * The day a track belongs to, as `YYYY-MM-DD` in UTC.
+ *
+ * UTC rather than local time so that everyone gets the same track at the same
+ * moment. A daily that rolls over at each person's midnight would split the
+ * room in two for most of the day, which is the one thing a daily is for.
+ */
+export function dayStamp(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * Today's course. The same one for everybody, every day, with no server.
+ *
+ * The date *is* the seed, so two browsers derive the same terrain without ever
+ * talking to each other or to us. And because a room is keyed to a track code,
+ * everyone who opens the daily and presses join lands in the same room, racing
+ * the same ghosts. The matchmaking falls out of the generator.
+ */
+export function dailySpec(now: Date): TrackSpec {
+  // The seed is the day *number* in base36, not the date written out. Seeds are
+  // stripped to twelve alphanumerics so they survive a URL, and "daily20260803"
+  // is thirteen: every day this month would have been truncated to the same
+  // seed and generated the same hills.
+  const day = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86_400_000);
+  const seed = `d${day.toString(36)}`;
+  return randomSpec(rngFromSeed(seed), seed);
+}
+
+/** Whether a spec is the daily for `now`, so the UI can say so. */
+export function isDaily(spec: TrackSpec, now: Date): boolean {
+  return sameSpec(spec, dailySpec(now));
+}
+
+/** Milliseconds until the next daily, for a countdown. */
+export function untilNextDaily(now: Date): number {
+  const next = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    0,
+    0,
+    0,
+    0,
+  );
+  return Math.max(0, next - now.getTime());
 }
 
 /** A short human label, for leaderboards and the room list. */

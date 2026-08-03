@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BRAIN_HIDDEN,
   BRAIN_INPUTS,
+  INPUT_LABELS,
   BRAIN_NODE_COUNT,
   BRAIN_OUTPUTS,
   BRAIN_RECURRENT,
@@ -89,8 +90,10 @@ describe('brain', () => {
         brain.weights[weightIndex(0, input, hidden)] = 1;
 
         const sensors = emptySensors();
-        const keys = ['pitch', 'roll', 'speed', 'drop', 'spin', 'near', 'mid', 'far'] as const;
-        sensors[keys[input]!] = 1;
+        // Straight off the labels, so adding a sensor cannot leave this test
+        // quietly poking at nothing: it used to hold its own list of eight
+        // names and simply stopped covering the inputs added after them.
+        sensors[INPUT_LABELS[input]!] = 1;
 
         const runtime = new BrainRuntime();
         runtime.evaluate(brain, sensors);

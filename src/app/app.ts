@@ -38,6 +38,7 @@ import {
   type GhostMessage,
 } from '../net/wire';
 import {
+  dailySpec,
   decodeSpec,
   defaultSpec,
   encodeSpec,
@@ -49,7 +50,7 @@ import { MedalBar } from '../ui/medalbar';
 import { RoomPanel } from '../ui/roompanel';
 import { TrackEditor } from '../ui/trackeditor';
 import { Workshop } from '../ui/workshop';
-import { randomSeed, rngFromSeed } from '../core/rng';
+import { rngFromSeed } from '../core/rng';
 import type { CarScore, GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
 import { randomCar3D, type Car3DDef } from '../ga/genome3d';
@@ -188,7 +189,12 @@ export class App {
     // A link may carry the whole design, or only a seed if it predates codes,
     // or neither.
     const shared = decodeSpec(trackCodeFromUrl() ?? '');
-    this.spec = shared ?? defaultSpec(seedFromUrl() ?? randomSeed());
+    // With no link to follow, the daily. Opening on a track nobody else is
+    // driving means the room is empty and the ghost is your own, which is the
+    // whole feature switched off by default. A seed in the URL still wins,
+    // since that is someone deliberately asking for a particular course.
+    const seedInUrl = seedFromUrl();
+    this.spec = shared ?? (seedInUrl ? defaultSpec(seedInUrl) : dailySpec(new Date()));
     const seed = this.spec.seed;
 
     this.sim = new Simulation({

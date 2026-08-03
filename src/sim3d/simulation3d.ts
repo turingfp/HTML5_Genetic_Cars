@@ -256,7 +256,7 @@ export class Simulation3D {
     for (const car of this.cars) {
       if (!car.alive || !car.chassis) continue;
       slopeProbes(this.track.profile, car.chassis.getPosition().x, this.probes);
-      car.drive(this.probes);
+      car.drive(this.probes, this.track.halfWidth);
     }
 
     this.world.step(TIME_STEP, SUB_STEP_COUNT);

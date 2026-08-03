@@ -26,7 +26,7 @@ import type { Rng } from '../core/rng';
 import type { MutationParams } from './mutation';
 
 /** What the car can feel. Everything arrives roughly inside [-1, 1]. */
-export const BRAIN_INPUTS = 8;
+export const BRAIN_INPUTS = 10;
 
 /** The middle layer, where combinations of senses turn into intentions. */
 export const BRAIN_HIDDEN = 5;
@@ -35,8 +35,11 @@ export const BRAIN_HIDDEN = 5;
  * One output per wheel slot. A car with fewer wheels simply leaves the spare
  * outputs unread, which costs a handful of weights and keeps every genome the
  * same length, so crossover between a two wheeler and a four wheeler needs no
- * special case. In 3D the two wheels of a mirrored pair share an output.
+ * special case. In 3D both wheels of a mirrored pair take the same one, and
+ * the difference between the sides comes from the steering output below.
  */
+export const BRAIN_WHEEL_OUTPUTS = MAX_WHEEL_COUNT;
+
 export const BRAIN_OUTPUTS = MAX_WHEEL_COUNT;
 
 /**
@@ -73,6 +76,8 @@ export const INPUT_LABELS = [
   'near',
   'mid',
   'far',
+  'edge',
+  'slide',
 ] as const;
 export const OUTPUT_LABELS = ['wheel A', 'wheel B', 'wheel C', 'wheel D'] as const;
 
@@ -107,10 +112,31 @@ export interface Sensors {
   near: number;
   mid: number;
   far: number;
+  /**
+   * Where the car sits across the road: 0 down the middle, ±1 at the edge.
+   *
+   * Without this the driver could not tell the centre of the road from the
+   * lip of it, which is most of why more than half of all deaths were cars
+   * driving off the side. Always zero in the flat mode, which has no sides.
+   */
+  edge: number;
+  /** How fast it is sliding towards an edge. Falling off is a rate, not a place. */
+  slide: number;
 }
 
 export function emptySensors(): Sensors {
-  return { pitch: 0, roll: 0, speed: 0, drop: 0, spin: 0, near: 0, mid: 0, far: 0 };
+  return {
+    pitch: 0,
+    roll: 0,
+    speed: 0,
+    drop: 0,
+    spin: 0,
+    near: 0,
+    mid: 0,
+    far: 0,
+    edge: 0,
+    slide: 0,
+  };
 }
 
 export function randomBrain(rng: Rng): Brain {
@@ -222,6 +248,8 @@ export class BrainRuntime {
     a[5] = clamp1(sensors.near);
     a[6] = clamp1(sensors.mid);
     a[7] = clamp1(sensors.far);
+    a[8] = clamp1(sensors.edge);
+    a[9] = clamp1(sensors.slide);
 
     let k = 0;
     for (let h = 0; h < BRAIN_HIDDEN; h++) {
@@ -249,6 +277,7 @@ export class BrainRuntime {
   output(index: number): number {
     return this.activations[BRAIN_INPUTS + BRAIN_HIDDEN + index] ?? 0;
   }
+
 }
 
 /**
@@ -268,6 +297,20 @@ export class BrainRuntime {
  */
 export const MOTOR_BASE = 0.7;
 export const MOTOR_GAIN = 0.8;
+
+/**
+ * Steering was tried and measured, and it made the cars worse.
+ *
+ * A skid steer output that leaned power across the pairs, so a driver could
+ * actually turn away from an edge. Over six seeds and twenty generations each:
+ * at full authority the best car went 83.9m against 86.8m for no steering at
+ * all, at half authority 89.9m, and with the channel present but inert 96.2m.
+ * Monotonic, and the wrong way round. The authority to steer is the authority
+ * to spin out, and a car that can whip itself sideways finds an edge faster
+ * than one that can only go straight. What the driver needed was not a
+ * steering wheel but somewhere to look: the same run with the edge sensors and
+ * no steering is the 96.2m. So the sensors stayed and this went.
+ */
 
 export function motorMultiplier(output: number): number {
   return MOTOR_BASE + MOTOR_GAIN * output;

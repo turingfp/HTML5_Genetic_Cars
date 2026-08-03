@@ -27,6 +27,9 @@ Three things make it more than a screensaver:
   room, and champions migrate between their populations over WebRTC. No server.
 - **There is a ghost to beat.** The fastest run on the track replays alongside
   the living pack, and in a room it is whoever is actually fastest anywhere.
+- **Everyone gets the same track today.** The daily is derived from the date, so
+  two browsers agree on it without a server, and because a room is keyed to a
+  track code the daily *is* the matchmaking.
 
 ## The tracks
 

@@ -166,8 +166,13 @@ export class Car3D {
     this.mass = totalMass;
   }
 
-  /** Let the driver set the wheel speeds. See `Car.drive` in the flat mode. */
-  drive(probes: SlopeProbes): void {
+  /**
+   * Let the driver set the wheel speeds. See `Car.drive` in the flat mode.
+   *
+   * `halfWidth` is the road's, so the edge sensor reads ±1 at the lip whatever
+   * width the track was built at.
+   */
+  drive(probes: SlopeProbes, halfWidth: number): void {
     const chassis = this.chassis;
     if (!chassis || !this.alive) return;
 
@@ -189,6 +194,8 @@ export class Car3D {
     sensors.near = probes.near;
     sensors.mid = probes.mid;
     sensors.far = probes.far;
+    sensors.edge = halfWidth > 0 ? chassis.getPosition().z / halfWidth : 0;
+    sensors.slide = velocity.z / SENSOR_SPEED_SCALE;
 
     this.brain.evaluate(this.def.base.brain, sensors);
     for (let i = 0; i < this.motors.length; i++) {

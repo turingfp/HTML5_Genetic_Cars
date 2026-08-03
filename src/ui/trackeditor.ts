@@ -14,13 +14,19 @@
 import { generateTrackFromSpec, type TrackDef } from '../sim/track';
 import { CAMPAIGN } from '../track/campaign';
 import {
+  dailySpec,
+  dayStamp,
   describeSpec,
   encodeSpec,
+  isDaily,
   normaliseSpec,
   SPEC_RANGES,
   type SpecKnob,
   type TrackSpec,
 } from '../track/spec';
+
+const DAILY_BRIEF =
+  'The same course for everyone today. Join the room and you are racing the people driving it.';
 
 export interface TrackEditorCallbacks {
   /**
@@ -59,10 +65,33 @@ export class TrackEditor {
   private readonly callbacks: TrackEditorCallbacks;
 
   private current: TrackSpec;
+  private readonly dailyNote: HTMLParagraphElement;
 
   constructor(host: HTMLElement, initial: TrackSpec, callbacks: TrackEditorCallbacks) {
     this.callbacks = callbacks;
     this.current = normaliseSpec(initial);
+
+    // The daily comes before everything, because it is the one track where
+    // pressing the button puts you where other people already are. A slider
+    // panel is a good second thing to find and a poor first one.
+    const daily = document.createElement('button');
+    daily.type = 'button';
+    daily.className = 'primary-button';
+    daily.id = 'daily-track';
+    daily.textContent = "Today's track";
+    daily.addEventListener('click', () => {
+      const spec = dailySpec(new Date());
+      this.setSpec(spec);
+      this.brief.textContent = DAILY_BRIEF;
+      this.picker.value = '';
+      this.callbacks.onBuild(spec);
+    });
+    host.append(daily);
+
+    this.dailyNote = document.createElement('p');
+    this.dailyNote.className = 'hint';
+    this.dailyNote.id = 'daily-note';
+    host.append(this.dailyNote);
 
     // The built-in tracks come first, because a slider with no idea what it is
     // for is a worse start than a list of things to try.
@@ -256,6 +285,10 @@ export class TrackEditor {
     }
     this.codeField.value = encodeSpec(this.current);
     this.summary.textContent = describeSpec(this.current);
+    const now = new Date();
+    this.dailyNote.textContent = isDaily(this.current, now)
+      ? `Driving the daily for ${dayStamp(now)}.`
+      : `A new one every day, the same for everyone. Today is ${dayStamp(now)}.`;
     this.draw();
   }
 

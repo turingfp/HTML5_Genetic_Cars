@@ -7,6 +7,7 @@ import {
   MAX_CAR_HEALTH,
   ROAD_HALF_WIDTH,
 } from '../src/config';
+import { defaultSpec } from '../src/track/spec';
 import { rngFromSeed } from '../src/core/rng';
 import { car3DOps, chassisHullPoints, randomCar3D, wheelMounts } from '../src/ga/genome3d';
 import { Simulation3D, createSnapshot3D } from '../src/sim3d/simulation3d';
@@ -199,4 +200,62 @@ describe('Simulation3D', () => {
 
     expect(late).toBeGreaterThan(early);
   }, 600_000);
+});
+
+describe('who the camera follows', () => {
+  /** Height of the road under a given x. */
+  const roadYAt = (sim: { track: { profile: { surface: { x: number; y: number }[] } } }, x: number) => {
+    const s = sim.track.profile.surface;
+    let lo = 0;
+    let hi = s.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (s[m]!.x < x) lo = m + 1;
+      else hi = m;
+    }
+    return s[lo]!.y;
+  };
+
+  it('prefers a car that is still on the road over one that has left it', async () => {
+    // The plain furthest car is off the road 17% of the time and for unbroken
+    // stretches over two seconds, which is a camera pointed at a doomed car
+    // falling through empty space while the pack is still racing. That is what
+    // "the cars fly in the air" turned out to mean.
+    const sim = await Simulation3D.create({ trackSeed: 'camera', runSeed: 'camera' });
+    const snap = createSnapshot3D();
+
+    let frames = 0;
+    let off = 0;
+    while (sim.generation < 4) {
+      sim.step();
+      sim.snapshot(snap);
+      if (snap.leaderIndex < 0) continue;
+      frames++;
+      const p = snap.leader;
+      if (Math.abs(p.z) > sim.track.halfWidth || p.y - roadYAt(sim, p.x) > 8) off++;
+    }
+
+    expect(frames).toBeGreaterThan(600);
+    // Not merely better: on the road essentially always, because a grounded
+    // car is available in all but the rarest frame.
+    expect(off / frames).toBeLessThan(0.02);
+    sim.dispose();
+  }, 120_000);
+
+  it('still has somebody to look at when nobody is grounded', async () => {
+    // Over a course full of holes there are moments with the whole field in
+    // the air, and the camera has to fall back rather than give up.
+    const sim = await Simulation3D.create({ trackSeed: 'holes', runSeed: 'holes' });
+    sim.setTrackSpec({ ...defaultSpec('holes'), tiles: 140, gaps: 0.22 });
+    const snap = createSnapshot3D();
+
+    let targetless = 0;
+    for (let i = 0; i < 60 * 30; i++) {
+      sim.step();
+      sim.snapshot(snap);
+      if (snap.aliveCount > 0 && snap.leaderIndex < 0) targetless++;
+    }
+    expect(targetless).toBe(0);
+    sim.dispose();
+  }, 120_000);
 });

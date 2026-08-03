@@ -210,6 +210,16 @@ export const SUB_STEP_COUNT = 8;
  */
 export const MOTOR_TORQUE_LIMIT = 5;
 
+/**
+ * How far above the road a car may be and still be worth pointing the camera
+ * at.
+ *
+ * Generous enough to keep following a real jump, which measures up to about
+ * seven metres for the car in front, and short of the height a car reaches
+ * once it has gone over an edge and is on its way down.
+ */
+export const LEADER_AIR_LIMIT = 8;
+
 /* ── Car life cycle ─────────────────────────────────────────────────────── */
 
 /** 10 seconds of stalling at 60Hz before a car dies. */

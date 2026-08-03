@@ -12,6 +12,7 @@
  */
 
 import { generateTrackFromSpec, type TrackDef } from '../sim/track';
+import { CAMPAIGN } from '../track/campaign';
 import {
   describeSpec,
   encodeSpec,
@@ -48,6 +49,8 @@ export class TrackEditor {
   private readonly seedInput: HTMLInputElement;
   private readonly codeField: HTMLInputElement;
   private readonly summary: HTMLElement;
+  private readonly brief: HTMLElement;
+  private readonly picker: HTMLSelectElement;
   private readonly preview: HTMLCanvasElement;
   private readonly callbacks: TrackEditorCallbacks;
 
@@ -56,6 +59,38 @@ export class TrackEditor {
   constructor(host: HTMLElement, initial: TrackSpec, callbacks: TrackEditorCallbacks) {
     this.callbacks = callbacks;
     this.current = normaliseSpec(initial);
+
+    // The built-in tracks come first, because a slider with no idea what it is
+    // for is a worse start than a list of things to try.
+    const picker = document.createElement('select');
+    picker.id = 'campaign';
+    picker.setAttribute('aria-label', 'Built-in tracks');
+    const custom = document.createElement('option');
+    custom.value = '';
+    custom.textContent = 'Pick a track';
+    picker.append(custom);
+    for (const [index, track] of CAMPAIGN.entries()) {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = track.name;
+      option.title = track.brief;
+      picker.append(option);
+    }
+    this.picker = picker;
+    picker.addEventListener('change', () => {
+      const track = CAMPAIGN[Number(picker.value)];
+      if (!track) return;
+      this.setSpec(track.spec);
+      this.brief.textContent = track.brief;
+      // Chosen from a list of finished tracks, so drive it rather than making
+      // someone press a second button to confirm what they just picked.
+      this.callbacks.onBuild(this.current);
+    });
+    host.append(picker);
+
+    this.brief = document.createElement('p');
+    this.brief.className = 'hint';
+    host.append(this.brief);
 
     this.preview = document.createElement('canvas');
     this.preview.className = 'track-preview';
@@ -87,6 +122,7 @@ export class TrackEditor {
       slider.value = String(this.current[knob]);
       slider.addEventListener('input', () => {
         this.current = normaliseSpec({ ...this.current, [knob]: Number(slider.value) });
+        this.markCustom();
         this.sync();
         this.callbacks.onPreview(this.current);
       });
@@ -108,6 +144,7 @@ export class TrackEditor {
     this.seedInput.value = this.current.seed;
     this.seedInput.addEventListener('input', () => {
       this.current = normaliseSpec({ ...this.current, seed: this.seedInput.value });
+      this.markCustom();
       this.sync();
       this.callbacks.onPreview(this.current);
     });
@@ -119,6 +156,7 @@ export class TrackEditor {
     dice.textContent = '⚇';
     dice.addEventListener('click', () => {
       this.setSpec(randomFrom(this.current));
+      this.markCustom();
       this.callbacks.onPreview(this.current);
     });
     seedRow.append(this.seedInput, dice);
@@ -189,6 +227,13 @@ export class TrackEditor {
     for (const [knob, slider] of this.sliders) slider.value = String(this.current[knob]);
     this.seedInput.value = this.current.seed;
     this.sync();
+  }
+
+  /** Show the picker as "Pick a track" again, since this is now your design. */
+  private markCustom(): void {
+    if (this.picker.value === '') return;
+    this.picker.value = '';
+    this.brief.textContent = '';
   }
 
   /** Dim the knobs that do nothing in the mode now running. */

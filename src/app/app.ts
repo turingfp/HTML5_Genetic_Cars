@@ -250,9 +250,6 @@ export class App {
 
     this.medalBar = new MedalBar(element('medals'));
     this.trackEditor = new TrackEditor(element('track-editor'), this.spec, {
-      // Previewing is free: the editor draws its own profile and the running
-      // simulation is left alone until someone asks for the new track.
-      onPreview: () => undefined,
       onBuild: (spec) => this.buildTrack(spec),
       onCopy: (code) => void this.copyCode(code),
     });

@@ -23,9 +23,13 @@ import {
 } from '../track/spec';
 
 export interface TrackEditorCallbacks {
-  /** The design changed. Cheap: only the preview should react. */
-  onPreview: (spec: TrackSpec) => void;
-  /** Build this track for real, throwing away the current run. */
+  /**
+   * Build this track for real, throwing away the current run.
+   *
+   * The only thing the editor asks the application for. Moving a slider
+   * redraws this panel's own preview and nothing else: rebuilding on every
+   * input event would throw away the run in the middle of a drag.
+   */
   onBuild: (spec: TrackSpec) => void;
   /** Copy the code to the clipboard. */
   onCopy: (code: string) => void;
@@ -124,7 +128,6 @@ export class TrackEditor {
         this.current = normaliseSpec({ ...this.current, [knob]: Number(slider.value) });
         this.markCustom();
         this.sync();
-        this.callbacks.onPreview(this.current);
       });
 
       row.append(caption, slider);
@@ -146,7 +149,6 @@ export class TrackEditor {
       this.current = normaliseSpec({ ...this.current, seed: this.seedInput.value });
       this.markCustom();
       this.sync();
-      this.callbacks.onPreview(this.current);
     });
 
     const dice = document.createElement('button');
@@ -157,7 +159,6 @@ export class TrackEditor {
     dice.addEventListener('click', () => {
       this.setSpec(randomFrom(this.current));
       this.markCustom();
-      this.callbacks.onPreview(this.current);
     });
     seedRow.append(this.seedInput, dice);
     host.append(seedRow);

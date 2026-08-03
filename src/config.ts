@@ -176,8 +176,39 @@ export function fallOffLateral(halfWidth: number): number {
   return halfWidth + FALL_OFF_MARGIN;
 }
 
-/** Physics sub-steps per step for Box3D's solver. */
-export const SUB_STEP_COUNT = 4;
+/**
+ * Physics sub-steps per step for Box3D's solver.
+ *
+ * Eight rather than four, because at four the wheel joints came apart. Box3D's
+ * revolute joint is a soft constraint, and a hard landing generates a contact
+ * impulse it cannot hold: measured over 20 generations on three seeds, a wheel
+ * reached 28.7 metres from its chassis and stayed past any legitimate reach for
+ * up to half a second. On screen that is a car exploding and reassembling,
+ * which is what it looked like.
+ *
+ * Doubling the sub-steps cuts the broken frames by five to nine times (1.26% of
+ * wheel-frames to 0.14% on the worst seed) and roughly halves the peak stretch.
+ * It costs about 1.7x the physics time, which is the honest price: max mode
+ * covers less ground per second than it did.
+ */
+export const SUB_STEP_COUNT = 8;
+
+/**
+ * Torque budget per wheel, as a multiple of what it takes to push the car's
+ * own weight along at that wheel's radius.
+ *
+ * The force a wheel puts down is torque over radius, so a torque budget has to
+ * scale *with* radius to mean the same thing on a small wheel as a large one.
+ * The first version divided by radius instead, which handed a 0.2m wheel five
+ * thousand newton-metres: far more than its contact patch could ever transmit,
+ * and enough to tear its own hinge open. Wheels were ending up 28 metres from
+ * the chassis and taking half a second to snap back, which on screen is a car
+ * exploding and reassembling.
+ *
+ * Five, because that is roughly what the old formula gave a mid-sized wheel,
+ * so ordinary cars drive as they did and only the absurd end is cut off.
+ */
+export const MOTOR_TORQUE_LIMIT = 5;
 
 /* ── Car life cycle ─────────────────────────────────────────────────────── */
 

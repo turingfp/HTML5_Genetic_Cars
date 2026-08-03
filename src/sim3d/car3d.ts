@@ -11,6 +11,7 @@ import {
   CHASSIS_RESTITUTION,
   FALL_OFF_DEPTH,
   GRAVITY_Y,
+  MOTOR_TORQUE_LIMIT,
   HEALTH_PER_METRE,
   MAX_CAR_HEALTH,
   MOTOR_SPEED,
@@ -148,8 +149,12 @@ export class Car3D {
         enableMotor: true,
         motorSpeed: MOTOR_SPEED,
         // The wheels share the load, so a car with more of them gets grip
-        // rather than free power.
-        maxMotorTorque: ((totalMass * -GRAVITY_Y) / radius) * (2 / this.wheels.length),
+        // rather than free power. Proportional to radius, because torque over
+        // radius is the force that actually reaches the ground: a budget that
+        // divided by radius gave small wheels torque no contact patch could
+        // transmit, and tore the hinge open instead.
+        maxMotorTorque:
+          totalMass * -GRAVITY_Y * radius * MOTOR_TORQUE_LIMIT * (2 / this.wheels.length),
       });
       this.motors.push(joint);
       // A mount belongs to one wheel of the silhouette, and both sides of a

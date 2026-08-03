@@ -106,6 +106,15 @@ tested offline and deterministically: migrants land after the elites so they
 compete rather than being culled first, and asking for migrants with nobody
 connected leaves the local search unchanged bit for bit.
 
+`tests/islands.test.ts` is the one that tests the actual claim. Two real rooms
+are wired to each other through a fake socket, and two real populations trade
+through them: a car bred in one turns up driving in the other, byte for byte
+the same genome after a round trip through JSON and validation, holding a
+lineage number that no local family shares. What is *not* covered is the
+transport itself, since every relay is blocked on the network this was built
+on. That is also why the room notices a blocked relay and says so rather than
+sitting on "Connected" in a room that will always be empty.
+
 ## Where this came from
 
 This began as [rednuht's Genetic Cars](http://rednuht.org/genetic_cars_2/), a

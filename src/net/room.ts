@@ -45,6 +45,10 @@ const APP_ID = 'boxcar3d-v1';
  */
 const PEER_TIMEOUT_MS = 90_000;
 
+/** How long to give the relays before deciding none of them will answer. */
+const RELAY_CHECK_INTERVAL_MS = 4000;
+const RELAY_CHECKS = 3;
+
 /** What we know about someone else in the room. */
 export interface Peer {
   id: string;
@@ -72,16 +76,37 @@ export interface RoomEvents {
   onChange: () => void;
   /** A champion arrived from `peer`. */
   onChampion?: (peer: Peer) => void;
+  /** The relays reported a problem. The room may still work through others. */
+  onTrouble?: (reason: string) => void;
 }
 
-type Sender<T> = (data: T, target?: string | string[]) => void;
-type Receiver<T> = (handler: (data: T, peerId: string) => void) => void;
+/**
+ * The slice of Trystero this uses, typed here rather than imported.
+ *
+ * Importing its types at the top would pull the module into the main bundle,
+ * which defeats the point of only fetching it when someone joins.
+ */
+interface MessageAction<T> {
+  send: (data: T, options?: { target?: string | string[] | null }) => Promise<void>;
+  onMessage: ((data: T, context: { peerId: string }) => void) | null;
+}
 
 interface TrysteroRoom {
-  makeAction: <T>(namespace: string) => [Sender<T>, Receiver<T>, unknown];
+  makeAction: <T>(namespace: string) => MessageAction<T>;
   onPeerJoin: ((peerId: string) => void) | null;
   onPeerLeave: ((peerId: string) => void) | null;
   leave: () => Promise<void> | void;
+}
+
+/**
+ * Send and forget.
+ *
+ * `send` rejects if a peer's channel has closed between the leaderboard being
+ * drawn and the message going out, which happens routinely and means nothing:
+ * that peer is gone and the sweep will notice.
+ */
+function fireAndForget<T>(action: MessageAction<T> | null, data: T, target?: string): void {
+  void action?.send(data, target ? { target } : undefined).catch(() => undefined);
 }
 
 /**
@@ -97,9 +122,9 @@ export class Room {
   private self: SelfState;
   private trackLength: number;
 
-  private sendHello: Sender<HelloMessage> | null = null;
-  private sendScore: Sender<ScoreMessage> | null = null;
-  private sendChampion: Sender<ChampionMessage> | null = null;
+  private hello: MessageAction<HelloMessage> | null = null;
+  private score: MessageAction<ScoreMessage> | null = null;
+  private champion: MessageAction<ChampionMessage> | null = null;
   private sweeper: ReturnType<typeof setInterval> | null = null;
 
   /** The code this room belongs to, so a track change can be detected. */
@@ -125,29 +150,36 @@ export class Room {
     events: RoomEvents,
   ): Promise<Room> {
     const instance = new Room(code, self, trackLength, events);
-    const { joinRoom } = (await import('trystero')) as unknown as {
-      joinRoom: (config: { appId: string }, roomId: string) => TrysteroRoom;
+    const trystero = (await import('trystero')) as unknown as {
+      joinRoom: (
+        config: { appId: string },
+        roomId: string,
+        callbacks?: { onJoinError?: (details: { error: string }) => void },
+      ) => TrysteroRoom;
+      getRelaySockets: () => Record<string, { readyState: number }>;
     };
+    const { joinRoom } = trystero;
 
-    const room = joinRoom({ appId: APP_ID }, `track-${code}`);
+    const room = joinRoom({ appId: APP_ID }, `track-${code}`, {
+      // Relays are public infrastructure and some networks block them
+      // outright. Saying so beats sitting on "connected" in an empty room.
+      onJoinError: (details) => instance.events.onTrouble?.(details.error),
+    });
     instance.room = room;
 
-    const [sendHello, onHello] = room.makeAction<HelloMessage>(ACTIONS.hello);
-    const [sendScore, onScore] = room.makeAction<ScoreMessage>(ACTIONS.score);
-    const [sendChampion, onChampion] = room.makeAction<ChampionMessage>(ACTIONS.champion);
-    instance.sendHello = sendHello;
-    instance.sendScore = sendScore;
-    instance.sendChampion = sendChampion;
+    instance.hello = room.makeAction<HelloMessage>(ACTIONS.hello);
+    instance.score = room.makeAction<ScoreMessage>(ACTIONS.score);
+    instance.champion = room.makeAction<ChampionMessage>(ACTIONS.champion);
 
-    onHello((raw, peerId) => instance.receiveHello(raw, peerId));
-    onScore((raw, peerId) => instance.receiveScore(raw, peerId));
-    onChampion((raw, peerId) => instance.receiveChampion(raw, peerId));
+    instance.hello.onMessage = (raw, ctx) => instance.receiveHello(raw, ctx.peerId);
+    instance.score.onMessage = (raw, ctx) => instance.receiveScore(raw, ctx.peerId);
+    instance.champion.onMessage = (raw, ctx) => instance.receiveChampion(raw, ctx.peerId);
 
     room.onPeerJoin = (peerId) => {
       // Introduce ourselves to the newcomer specifically rather than shouting
       // at everyone again.
       instance.touch(peerId);
-      sendHello(instance.self, peerId);
+      fireAndForget(instance.hello, instance.self, peerId);
       instance.events.onChange();
     };
     room.onPeerLeave = (peerId) => {
@@ -155,9 +187,41 @@ export class Room {
       instance.events.onChange();
     };
 
-    sendHello(self);
+    fireAndForget(instance.hello, self);
     instance.sweeper = globalThis.setInterval(() => instance.sweep(), 15_000);
+    instance.watchRelays(trystero.getRelaySockets);
     return instance;
+  }
+
+  /**
+   * Check that at least one relay actually opened.
+   *
+   * Trystero reports no error when every relay socket is refused: it has
+   * joined a room, there is simply nobody in it and never will be. On a
+   * network that blocks these hosts, and plenty do, that is indistinguishable
+   * from being early. So look at the sockets and say which one it is.
+   */
+  private watchRelays(getRelaySockets: () => Record<string, { readyState: number }>): void {
+    const check = (attempt: number) => {
+      if (!this.room) return;
+      let open = 0;
+      try {
+        for (const socket of Object.values(getRelaySockets() ?? {})) {
+          if (socket?.readyState === 1) open++;
+        }
+      } catch {
+        return;
+      }
+      if (open > 0) return;
+      if (attempt < RELAY_CHECKS) {
+        globalThis.setTimeout(() => check(attempt + 1), RELAY_CHECK_INTERVAL_MS);
+        return;
+      }
+      this.events.onTrouble?.(
+        'In the room, but no relay would take the connection. This network is probably blocking them.',
+      );
+    };
+    globalThis.setTimeout(() => check(1), RELAY_CHECK_INTERVAL_MS);
   }
 
   /** Everyone currently here, best first. */
@@ -174,18 +238,18 @@ export class Room {
 
   /** Tell the room how this tab is doing. */
   report(generation: number, best: number, evaluations: number): void {
-    this.sendScore?.({ generation, best, evaluations, mode: this.self.mode });
+    fireAndForget(this.score, { generation, best, evaluations, mode: this.self.mode });
   }
 
   /** Offer this tab's best car to anyone who wants to breed from it. */
   offerChampion(car: WireCar, score: number, generation: number): void {
-    this.sendChampion?.({ car, score, generation, mode: this.self.mode });
+    fireAndForget(this.champion, { car, score, generation, mode: this.self.mode });
   }
 
   /** Say who we are again, after a rename or a mode switch. */
   setSelf(self: SelfState): void {
     this.self = self;
-    this.sendHello?.(self);
+    fireAndForget(this.hello, self);
   }
 
   setTrackLength(length: number): void {
@@ -223,9 +287,9 @@ export class Room {
     this.known.clear();
     const room = this.room;
     this.room = null;
-    this.sendHello = null;
-    this.sendScore = null;
-    this.sendChampion = null;
+    this.hello = null;
+    this.score = null;
+    this.champion = null;
     try {
       await room?.leave();
     } catch {

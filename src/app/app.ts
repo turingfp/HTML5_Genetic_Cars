@@ -778,6 +778,7 @@ export class App {
         {
           onChange: () => this.renderRoom(),
           onChampion: (peer) => this.onChampionArrived(peer),
+          onTrouble: (reason) => this.roomPanel.setTrouble(reason),
         },
       );
       this.roomPanel.setStatus('online');

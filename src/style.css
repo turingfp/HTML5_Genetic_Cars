@@ -929,3 +929,7 @@ summary:hover h2 {
   color: #f8b4b4;
   opacity: 0.75;
 }
+
+.room-status[data-status='trouble'] {
+  color: #fbbf24;
+}

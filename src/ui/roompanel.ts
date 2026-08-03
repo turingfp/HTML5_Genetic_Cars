@@ -106,6 +106,19 @@ export class RoomPanel {
     this.setStatus('offline');
   }
 
+  /**
+   * A relay complained.
+   *
+   * Shown because "connected, nobody here yet" and "your network blocks this"
+   * look identical from the outside, and only one of them is worth waiting
+   * out.
+   */
+  setTrouble(reason: string): void {
+    if (this.status !== 'online') return;
+    this.statusLine.textContent = reason;
+    this.statusLine.dataset['status'] = 'trouble';
+  }
+
   setMigrants(count: number): void {
     this.migrants.value = String(count);
     this.migrantsReadout.textContent = this.migrants.value;

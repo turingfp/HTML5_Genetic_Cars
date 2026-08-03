@@ -10,6 +10,7 @@ import {
   ACESFilmicToneMapping,
   AmbientLight,
   BackSide,
+  BoxGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -37,6 +38,7 @@ import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
 import type { Ghost3DFrame } from '../replay/ghost3d';
 import { lineageHex, lineageHue } from '../ga/lineage';
 import { wheelHalfTread } from '../sim3d/car3d';
+import { CRATE_HALF } from '../sim3d/debris';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
 import type { Track3D } from '../sim3d/track3d';
 import { Graveyard, type Death } from './graveyard';
@@ -48,6 +50,8 @@ const NORMAL_COLOR = 0xf87171;
 const LEADER_COLOR = 0xfde047;
 /** Pale and cold, so the ghost reads as a memory rather than a rival. */
 const GHOST_COLOR = 0x93c5fd;
+/** Crates: warm and matte, so they read as cargo rather than as scenery. */
+const CRATE_COLOR = 0xb98a4f;
 
 /** Free every geometry and material hanging off a group, then empty it. */
 function disposeGroup(group: Group): void {
@@ -76,6 +80,13 @@ export class Renderer3D {
 
   private road: Mesh | null = null;
   private roadSeed = '';
+  private readonly crates: Mesh[] = [];
+  private readonly crateGeometry = new BoxGeometry(CRATE_HALF * 2, CRATE_HALF * 2, CRATE_HALF * 2);
+  private readonly crateMaterial = new MeshStandardMaterial({
+    color: CRATE_COLOR,
+    roughness: 0.85,
+    metalness: 0,
+  });
   private cars: CarMeshes[] = [];
   private carGeneration = -1;
 
@@ -212,6 +223,9 @@ export class Renderer3D {
     this.clearGhost();
     this.wheelMaterial.dispose();
     this.hubMaterial.dispose();
+    this.syncCrates(0);
+    this.crateGeometry.dispose();
+    this.crateMaterial.dispose();
     this.road?.geometry.dispose();
     this.graveyard.dispose();
     this.trails.dispose();
@@ -439,8 +453,41 @@ export class Renderer3D {
     return { group, wheels, def };
   }
 
+  /**
+   * One mesh per crate, made once and kept.
+   *
+   * The count only changes when the track does, and all of them share one
+   * geometry and one material, so this is a pool rather than a rebuild.
+   */
+  private syncCrates(count: number): void {
+    while (this.crates.length > count) {
+      const mesh = this.crates.pop();
+      if (mesh) this.scene.remove(mesh);
+    }
+    while (this.crates.length < count) {
+      const mesh = new Mesh(this.crateGeometry, this.crateMaterial);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      this.crates.push(mesh);
+    }
+  }
+
   draw(track: Track3D, snapshot: World3DSnapshot, dt: number): void {
     if (!this.road || this.roadSeed !== track.seed) this.buildRoad(track);
+
+    this.syncCrates(snapshot.crates.length);
+    for (let i = 0; i < snapshot.crates.length; i++) {
+      const pose = snapshot.crates[i]!;
+      const mesh = this.crates[i]!;
+      mesh.position.set(pose.position.x, pose.position.y, pose.position.z);
+      mesh.quaternion.set(
+        pose.rotation.x,
+        pose.rotation.y,
+        pose.rotation.z,
+        pose.rotation.w,
+      );
+    }
 
     // Geometry only changes when a new generation is born.
     if (this.carGeneration !== snapshot.generation || this.cars.length !== snapshot.cars.length) {

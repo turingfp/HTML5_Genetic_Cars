@@ -40,6 +40,7 @@ import {
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
 import { Replay3DRecorder } from '../replay/recorder3d';
+import { buildCrates } from './debris';
 import { slopeProbes, surfaceIndexAt, type SlopeProbes } from '../sim/track';
 import {
   generateTrack3D,
@@ -92,6 +93,8 @@ export class Simulation3D {
   /** One per car, so whichever wins can become the ghost. */
   recorders: Replay3DRecorder[] = [];
   private roadBodies: Box3DBody[] = [];
+  /** Loose crates, if this track has any. Public so the snapshot can read them. */
+  crates: Box3DBody[] = [];
   private rng: Rng;
 
   onCarDeath: ((car: Car3D) => void) | null = null;
@@ -239,7 +242,22 @@ export class Simulation3D {
     return surface[i]!.y;
   }
 
+  /**
+   * Loose crates, rebuilt with every generation.
+   *
+   * Destroyed and remade rather than moved back, because a body's transform is
+   * not something this wrapper exposes, and because velocity has to be cleared
+   * too: a crate put back in place while still travelling is worse than one
+   * left where it landed. Twenty or so boxes a generation is nothing next to
+   * building the cars.
+   */
+  private rebuildCrates(): void {
+    for (const body of this.crates) body.destroy();
+    this.crates = this.track.spec.debris > 0 ? buildCrates(this.world, this.track) : [];
+  }
+
   private spawn(entries: CarEntry<Car3DDef>[]): void {
+    this.rebuildCrates();
     this.cars = entries.map((e) => new Car3D(this.world, e.def, e.index, e.isElite, e.lineage));
     this.recorders = this.cars.map(() => new Replay3DRecorder());
     this.nextLineage = Math.max(this.nextLineage, ...entries.map((e) => e.lineage + 1));
@@ -387,6 +405,22 @@ export class Simulation3D {
       });
     }
     out.cars.length = this.cars.length;
+
+    while (out.crates.length < this.crates.length) out.crates.push(emptyPose3D());
+    out.crates.length = this.crates.length;
+    for (let i = 0; i < this.crates.length; i++) {
+      const body = this.crates[i]!;
+      const pose = out.crates[i]!;
+      const p = body.getPosition();
+      const q = body.getRotation();
+      pose.position.x = p.x;
+      pose.position.y = p.y;
+      pose.position.z = p.z;
+      pose.rotation.x = q.x;
+      pose.rotation.y = q.y;
+      pose.rotation.z = q.z;
+      pose.rotation.w = q.w;
+    }
 
     out.frame = this.frame;
     out.generation = this.generation;

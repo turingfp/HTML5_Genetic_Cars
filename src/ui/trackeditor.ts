@@ -19,6 +19,7 @@ import {
   describeSpec,
   encodeSpec,
   isDaily,
+  KNOB_ORDER,
   normaliseSpec,
   SPEC_RANGES,
   type SpecKnob,
@@ -41,15 +42,15 @@ export interface TrackEditorCallbacks {
   onCopy: (code: string) => void;
 }
 
-const KNOB_ORDER: SpecKnob[] = ['tiles', 'hills', 'ramps', 'gaps', 'bank', 'width'];
-
 /** Knobs that only mean anything in 3D, so they can be dimmed in flat mode. */
-const THREE_D_ONLY: ReadonlySet<SpecKnob> = new Set<SpecKnob>(['bank', 'width']);
+const THREE_D_ONLY: ReadonlySet<SpecKnob> = new Set<SpecKnob>(['bank', 'width', 'debris']);
 
 /** How a knob's value is shown next to its slider. */
 function format(knob: SpecKnob, value: number): string {
   if (knob === 'tiles') return String(Math.round(value));
-  if (knob === 'ramps' || knob === 'gaps') return `${Math.round(value * 100)}%`;
+  if (knob === 'ramps' || knob === 'gaps' || knob === 'debris') {
+    return `${Math.round(value * 100)}%`;
+  }
   return `${value.toFixed(2)}x`;
 }
 

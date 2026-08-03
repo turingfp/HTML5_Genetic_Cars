@@ -30,6 +30,8 @@ Three things make it more than a screensaver:
 - **Everyone gets the same track today.** The daily is derived from the date, so
   two browsers agree on it without a server, and because a room is keyed to a
   track code the daily *is* the matchmaking.
+- **The road has things on it.** Crates are real dynamic bodies: they tip, slide,
+  stack, and get shouldered aside by a car heavy enough to do it.
 
 ## The tracks
 
@@ -105,6 +107,37 @@ ten thousand wheels, a NaN spoke, two wheels on one corner or a chassis a
 kilometre wide costs you nothing. `tests/wire.test.ts` is nineteen tests of
 exactly that, running the messages through JSON first the way the transport
 does.
+
+### Crates
+
+Everything else in this world is a car or a static slab, which means the physics
+engine never had to show what it is for. A crate is a real dynamic body. It has
+mass, it tips over, it slides down a camber, two of them stack and then do not,
+and a car with enough momentum shoulders one aside while a lighter one stops
+dead against it. None of that is scripted; it is the same solver the cars are
+already running, given something to solve.
+
+It also changes the search. A hill is a fixed obstacle that a population
+memorises. A crate moves when hit, so the trait being selected for stops being
+"clears a 2m gap" and starts being "carries enough momentum through three kilos
+of cargo", which is a different car.
+
+Placement comes from the track seed, so a shared track has them in the same
+places for everyone, and they are rebuilt every generation: each car should meet
+the course the last car met, not whatever the last car left behind. They sit near
+the crown of the road because a crate on the lip of a cambered road slides off by
+itself, and one you can drive around is not an obstacle.
+
+Getting them onto the road took two goes. The first version placed each crate at
+the centreline height and then offset it sideways, which on any cambered track
+puts it *under* the surface: the solver ejected them and they fell eighty metres.
+They are now placed on the same cross-sections the colliders are built from.
+
+Adding the knob also caught an old bug. The track editor's header says sliders
+are built from the spec "so adding a knob to the spec adds it to the editor and
+they cannot drift apart" — and then the editor kept its own second copy of the
+knob order, so crates went into the code format with no slider to set them. One
+list now.
 
 Laps cross the room as well as cars. The best run in 3D is recorded and replays
 as a pale ghost driving beside the pack, and when a peer beats the track their

@@ -39,6 +39,14 @@ export interface World3DSnapshot {
   leader: Vec3;
   bestX: number;
   cars: Car3DSnapshot[];
+  /**
+   * Where every crate is now.
+   *
+   * Poses only. The renderer builds one box mesh and reuses it, so it needs
+   * positions per frame and nothing else. Reused objects, like the car poses,
+   * so a frame allocates nothing.
+   */
+  crates: Pose3D[];
 }
 
 export function emptyPose3D(): Pose3D {
@@ -62,5 +70,6 @@ export function createSnapshot3D(): World3DSnapshot {
     leader: { x: 0, y: 0, z: 0 },
     bestX: 0,
     cars: [],
+    crates: [],
   };
 }

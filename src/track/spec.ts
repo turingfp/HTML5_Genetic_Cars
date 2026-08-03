@@ -29,6 +29,8 @@ export interface TrackSpec {
   bank: number;
   /** Multiplies the 3D road's width. Narrow roads punish wide cars. */
   width: number;
+  /** Chance per tile of a loose crate sitting on the road, in 3D. */
+  debris: number;
 }
 
 /** Inclusive range of each numeric knob, and what it is called in the UI. */
@@ -39,19 +41,37 @@ export const SPEC_RANGES = {
   gaps: { min: 0, max: 0.25, step: 0.005, label: 'Gaps' },
   bank: { min: 0, max: 2, step: 0.05, label: 'Camber' },
   width: { min: 0.35, max: 2, step: 0.05, label: 'Road width' },
+  debris: { min: 0, max: 0.4, step: 0.01, label: 'Crates' },
 } as const;
 
 export type SpecKnob = keyof typeof SPEC_RANGES;
 
-/** The knobs, in the order they are packed into a code. Never reorder these. */
-const KNOB_ORDER: SpecKnob[] = ['tiles', 'hills', 'ramps', 'gaps', 'bank', 'width'];
+/**
+ * The knobs, in the order they are packed into a code. Never reorder these.
+ *
+ * Exported because the editor builds its sliders from it. It used to keep a
+ * second copy of this list, which is how adding crates gave the code format a
+ * knob the panel had no slider for.
+ */
+export const KNOB_ORDER: SpecKnob[] = [
+  'tiles',
+  'hills',
+  'ramps',
+  'gaps',
+  'bank',
+  'width',
+  'debris',
+];
+
+/** Knobs a `t1` code predates. Anything here reads as its default from one. */
+const KNOBS_AFTER_T1: ReadonlySet<SpecKnob> = new Set<SpecKnob>(['debris']);
 
 /**
  * The classic course: the terrain the original generated, and still what you
  * get from a bare seed. Everything else is a deliberate departure from it.
  */
 export function defaultSpec(seed: string): TrackSpec {
-  return { seed, tiles: 200, hills: 1, ramps: 0, gaps: 0, bank: 1, width: 1 };
+  return { seed, tiles: 200, hills: 1, ramps: 0, gaps: 0, bank: 1, width: 1, debris: 0 };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -118,7 +138,17 @@ const MAX_SEED_LENGTH = 12;
  * different track under the same name, which is the worst possible failure for
  * something whose whole purpose is that two people see the same thing.
  */
-const CODE_VERSION = 't1';
+const CODE_VERSION = 't2';
+
+/**
+ * Older formats that can still be read.
+ *
+ * A code is a link somebody sent someone else, and it does not stop being one
+ * because a knob was added afterwards. `t1` predates crates, so a `t1` code
+ * decodes with the knobs it does have and zero for the ones it does not, which
+ * gives back exactly the track its author saw.
+ */
+const READABLE_VERSIONS = ['t2', 't1'] as const;
 
 /**
  * Bytes each knob takes in a code.
@@ -134,6 +164,7 @@ const KNOB_BYTES: Record<SpecKnob, number> = {
   gaps: 1,
   bank: 1,
   width: 1,
+  debris: 1,
 };
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -171,7 +202,7 @@ function fromBase64Url(text: string): number[] | null {
 
 /**
  * Pack a spec into something short enough to say out loud badly and paste
- * accurately. Six knob bytes, then the seed as plain characters.
+ * accurately. The knob bytes, then the seed as plain characters.
  */
 export function encodeSpec(spec: TrackSpec): string {
   const normalised = normaliseSpec(spec);
@@ -185,19 +216,21 @@ export function encodeSpec(spec: TrackSpec): string {
   return CODE_VERSION + toBase64Url(bytes);
 }
 
-/** Total bytes the knob section of a code occupies. */
-const KNOB_SECTION = KNOB_ORDER.reduce((sum, knob) => sum + KNOB_BYTES[knob], 0);
-
 /** Read a code back, or null if it is not one. */
 export function decodeSpec(code: string): TrackSpec | null {
   const trimmed = code.trim();
-  if (!trimmed.startsWith(CODE_VERSION)) return null;
-  const bytes = fromBase64Url(trimmed.slice(CODE_VERSION.length));
-  if (!bytes || bytes.length < KNOB_SECTION + 1) return null;
+  const version = READABLE_VERSIONS.find((v) => trimmed.startsWith(v));
+  if (!version) return null;
+  const legacy = version === 't1';
+  const knobs = legacy ? KNOB_ORDER.filter((k) => !KNOBS_AFTER_T1.has(k)) : KNOB_ORDER;
+  const section = knobs.reduce((sum, knob) => sum + KNOB_BYTES[knob], 0);
+
+  const bytes = fromBase64Url(trimmed.slice(version.length));
+  if (!bytes || bytes.length < section + 1) return null;
 
   const spec = defaultSpec('classic');
   let at = 0;
-  for (const knob of KNOB_ORDER) {
+  for (const knob of knobs) {
     const index = KNOB_BYTES[knob] === 2 ? (bytes[at]! << 8) | bytes[at + 1]! : bytes[at]!;
     at += KNOB_BYTES[knob];
     spec[knob] = fromStepIndex(knob, index);
@@ -256,6 +289,7 @@ export function randomSpec(rng: Rng, seed: string): TrackSpec {
     gaps: soft() * 0.14,
     bank: rng() * 1.6,
     width: 0.6 + rng() * 1.1,
+    debris: soft() * 0.3,
   });
 }
 
@@ -318,5 +352,7 @@ export function describeSpec(spec: TrackSpec): string {
   if (spec.ramps >= 0.1) parts.push('rampy');
   if (spec.bank >= 1.4) parts.push('cambered');
   if (spec.width <= 0.6) parts.push('narrow');
+  if (spec.debris >= 0.15) parts.push('littered');
+  else if (spec.debris > 0) parts.push('crates');
   return parts.join(', ');
 }

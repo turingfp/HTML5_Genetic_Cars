@@ -90,6 +90,7 @@ describe('spec validation', () => {
       gaps: -1,
       bank: 900,
       width: 0,
+      debris: 99,
     };
     const spec = normaliseSpec(wild);
     for (const knob of KNOBS) {

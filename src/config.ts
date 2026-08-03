@@ -323,3 +323,14 @@ export const TOP_SCORE_COUNT = 10;
 
 /** Thickness of the road slab colliders, below the drawn surface. */
 export const ROAD_THICKNESS = 0.6;
+
+/**
+ * A crate's density, friction and bounce.
+ *
+ * Light enough that a decent car shoulders one aside rather than stopping, and
+ * heavy enough that a flimsy one does not. Barely bouncy, because a crate that
+ * pings off looks like a beach ball and stops reading as an obstacle.
+ */
+export const CRATE_DENSITY = 3;
+export const CRATE_FRICTION = 0.6;
+export const CRATE_RESTITUTION = 0.05;

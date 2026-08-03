@@ -11,6 +11,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // `bench/` is deliberately outside this: a sweep runs the physics for tens
+    // of minutes, which is not something `npm test` should ever do.
     include: ['tests/**/*.test.ts'],
     // The suite runs real physics; CI runners are slower and more variable
     // than a dev machine. Generous enough to absorb that, short enough that a

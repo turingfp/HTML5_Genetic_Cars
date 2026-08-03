@@ -159,8 +159,10 @@ and pins the ordering.
 This is worth measuring rather than assuming, and the answer is interesting: the
 driver barely matters and the body matters a lot.
 
-Each row is 12 runs (6 track seeds by 2 population seeds), 30 generations in 2D
-and 20 in 3D, reporting how far the furthest car got. `best` is the peak across
+Every number below came from `npm run bench`, which is in the repository so the
+claims are reproducible and so the next change can be judged the same way. Each
+row is 12 runs (6 track seeds by 2 population seeds), 30 generations in 2D and
+20 in 3D, reporting how far the furthest car got. `best` is the peak across
 all generations, `mean` the average across them, which is the better measure of
 whether the whole population improved rather than one lucky car.
 
@@ -253,6 +255,7 @@ npm run dev
 | `npm run typecheck` | TypeScript, no emit                           |
 | `npm test`          | Unit tests for the GA, terrain and simulation |
 | `npm run test:e2e`  | Playwright smoke tests against the built app  |
+| `npm run bench`     | A/B sweep over configurations of the search    |
 
 The end-to-end tests download their own Chromium by default. To reuse one that
 is already installed, set `CHROMIUM_PATH` to the binary.

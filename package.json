@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bench": "vitest run --dir bench --include \"**/*.bench.ts\" --testTimeout 3600000"
   },
   "dependencies": {
     "box3d-wasm": "^0.2.0",

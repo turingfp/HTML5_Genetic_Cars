@@ -46,6 +46,8 @@ export const CAMPAIGN: CampaignTrack[] = [
   {
     name: 'Tightrope',
     brief: 'A narrow, heavily cambered road. Wide and low, or over the edge.',
+    // Brutal but drivable: measured at 30.6m against 50.5m for a gentler
+    // version of the same track, so it is about twice as hard and not a wall.
     spec: normaliseSpec({ seed: 'tightrope', tiles: 150, hills: 0.8, bank: 1.9, width: 0.4 }),
   },
   {

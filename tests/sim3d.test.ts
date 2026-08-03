@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CHASSIS_HALF_WIDTH_MIN,
   FALL_OFF_DEPTH,
-  FALL_OFF_LATERAL,
+  fallOffLateral,
   MAX_CAR_HEALTH,
   ROAD_HALF_WIDTH,
 } from '../src/config';
@@ -145,7 +145,7 @@ describe('Simulation3D', () => {
     const car = sim.cars[0]!;
     // Report the road as far above the car, as it would be after a plunge.
     const roadY = car.chassis!.getPosition().y + FALL_OFF_DEPTH + 1;
-    expect(car.update(roadY)).toBe(true);
+    expect(car.update(roadY, fallOffLateral(sim.track.halfWidth))).toBe(true);
     expect(car.fellOff).toBe(true);
     sim.dispose();
   });
@@ -154,9 +154,10 @@ describe('Simulation3D', () => {
     const sim = await Simulation3D.create({ trackSeed: 'onroad', runSeed: 'onroad' });
     const car = sim.cars[0]!;
     // Level with the road and inside the edges: nothing to trigger a fall.
-    expect(car.update(car.chassis!.getPosition().y)).toBe(false);
+    const limit = fallOffLateral(sim.track.halfWidth);
+    expect(car.update(car.chassis!.getPosition().y, limit)).toBe(false);
     expect(car.fellOff).toBe(false);
-    expect(Math.abs(car.chassis!.getPosition().z)).toBeLessThan(FALL_OFF_LATERAL);
+    expect(Math.abs(car.chassis!.getPosition().z)).toBeLessThan(limit);
     sim.dispose();
   });
 

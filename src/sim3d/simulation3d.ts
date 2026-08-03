@@ -11,6 +11,7 @@ import {
   DEFAULT_ELITE_COUNT,
   DEFAULT_IMMIGRANTS,
   DEFAULT_MIGRANTS,
+  fallOffLateral,
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
@@ -212,7 +213,7 @@ export class Simulation3D {
 
     for (const car of this.cars) {
       if (!car.alive) continue;
-      const died = car.update(this.roadHeightAt(car.maxX));
+      const died = car.update(this.roadHeightAt(car.maxX), fallOffLateral(this.track.halfWidth));
       if (car.maxX > this.bestX + PROGRESS_EPSILON) {
         this.bestX = car.maxX;
         this.lastProgressFrame = this.frame;

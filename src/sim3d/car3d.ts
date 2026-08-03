@@ -10,7 +10,6 @@ import {
   CHASSIS_FRICTION,
   CHASSIS_RESTITUTION,
   FALL_OFF_DEPTH,
-  FALL_OFF_LATERAL,
   GRAVITY_Y,
   HEALTH_PER_METRE,
   MAX_CAR_HEALTH,
@@ -200,7 +199,7 @@ export class Car3D {
    * it goes, so falling has to be measured against the local surface rather
    * than against the height the car started at.
    */
-  update(roadY: number): boolean {
+  update(roadY: number, lateralLimit: number): boolean {
     const chassis = this.chassis;
     if (!chassis || !this.alive) return false;
 
@@ -211,7 +210,7 @@ export class Car3D {
     if (p.y < this.minY) this.minY = p.y;
 
     // Leaving the road is instant death, since there is nothing to drive on.
-    if (Math.abs(p.z) > FALL_OFF_LATERAL || p.y < roadY - FALL_OFF_DEPTH) {
+    if (Math.abs(p.z) > lateralLimit || p.y < roadY - FALL_OFF_DEPTH) {
       this.fellOff = true;
       return true;
     }

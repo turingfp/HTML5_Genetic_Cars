@@ -159,9 +159,22 @@ export const ROAD_HALF_WIDTH = 4;
 export const ROAD_BANK_GAIN = 0.5;
 export const MAX_ROAD_BANK = 0.45;
 
-/** A car this far to the side, or this far below the road, has fallen off. */
-export const FALL_OFF_LATERAL = ROAD_HALF_WIDTH + 2.5;
+/**
+ * How far past the edge a car may stray before it counts as gone.
+ *
+ * Measured from the road's own edge, not from a fixed distance from the
+ * centre. Road width is a track knob now, and a constant tied to the default
+ * width was wrong at both ends: on a wide road it killed cars that were still
+ * comfortably on the tarmac, and on a narrow one it let a car wander several
+ * road widths into space before noticing.
+ */
+export const FALL_OFF_MARGIN = 2.5;
 export const FALL_OFF_DEPTH = 8;
+
+/** The limit for a road of a given half-width. */
+export function fallOffLateral(halfWidth: number): number {
+  return halfWidth + FALL_OFF_MARGIN;
+}
 
 /** Physics sub-steps per step for Box3D's solver. */
 export const SUB_STEP_COUNT = 4;

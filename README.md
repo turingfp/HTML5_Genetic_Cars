@@ -48,6 +48,18 @@ Put the same population on Leap Of Faith and on Tightrope and two completely
 different body plans win, which is the thing the single-terrain version could
 never show you.
 
+Medals are fractions of the course, so they mean the same thing everywhere and
+the campaign is what supplies the difficulty curve. Taking the benchmark numbers
+below at face value, a good 30 generation run reaches about 165m in 2D and about
+80m in 3D. On First Light, 90 tiles and 135m, that is a finish in 2D and silver
+in 3D. On The Climb, 200 tiles and 300m, it is silver in 2D and bronze in 3D,
+with gold a genuine long-run target. On The Long Haul nothing has come close,
+which is the idea.
+
+Tightrope is the one that needed measuring rather than guessing: at its
+settings a population reaches 30.6m against 50.5m for a gentler version of the
+same course, so it is about twice as hard and still not a wall.
+
 Gaps are real in both modes: no collider, no faces, a hole you fall into. A gap
 tile keeps its geometry so the surface polyline stays a function of x and every
 lookup that walks it still works, it simply has nothing to drive on. Ramps and

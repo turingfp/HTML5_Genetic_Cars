@@ -67,3 +67,29 @@ describe('the campaign', () => {
     expect(first.spec.hills).toBeLessThan(0.6);
   });
 });
+
+describe('the campaign in the 3D engine', () => {
+  it('runs every built-in track without the cars all dying at the gate', async () => {
+    const { Simulation3D } = await import('../src/sim3d/simulation3d');
+
+    for (const track of CAMPAIGN) {
+      const sim = await Simulation3D.create({ trackSeed: track.spec.seed, runSeed: 'campaign' });
+      sim.setTrackSpec(track.spec);
+
+      // Sampled as it runs, and kept as a peak: a generation rollover resets
+      // bestX, so reading it at the end measures whatever the *next* twenty
+      // cars have managed rather than the best of the run.
+      let furthest = 0;
+      for (let i = 0; i < 900; i++) {
+        sim.step();
+        furthest = Math.max(furthest, sim.bestX);
+      }
+
+      expect(sim.track.profile.tiles).toHaveLength(track.spec.tiles);
+      // Something got somewhere. A track where the whole field slides off the
+      // start line is not a track, it is a bug in the numbers above it.
+      expect(furthest, `${track.name} went nowhere`).toBeGreaterThan(5);
+      sim.dispose();
+    }
+  }, 240_000);
+});

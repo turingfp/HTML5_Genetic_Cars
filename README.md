@@ -1,16 +1,63 @@
 # BoxCar3D
 
 Cars that evolve their shape and the little neural network that drives them, on
-Erin Catto's Box3D physics, in a browser tab.
+Erin Catto's Box3D physics, in a browser tab. Design a track, share the code,
+and every browser driving it becomes an island in one distributed search.
 
 ![Four wheeled cars evolving on a banked road](docs/screenshot-3d.png)
 
-Twenty random cars set off down a road that gets steeper and starts to bank. A
-car scores by how far it gets, plus a bonus for average speed. It dies when it
-stops earning ground or rolls off the edge. When the round is over the best ones
-get paired up, their genes spliced together and lightly mutated, and the next
-twenty set off. Do that for a while and something that can actually climb the
-hill falls out of it.
+Twenty random cars set off down a road that gets steeper, starts to bank, and
+has holes in it. A car scores by how far it gets, plus a bonus for average
+speed. It dies when it stops earning ground, rolls off the edge, or falls into a
+gap. When the round is over the best ones get paired up, their genes spliced
+together and lightly mutated, and the next twenty set off. Do that for a while
+and something that can actually climb the hill falls out of it.
+
+Three things make it more than a screensaver:
+
+- **The track is a design, not a dice roll.** Length, hills, ramps, gaps,
+  camber and road width, packed into a twenty character code. Paste someone
+  yours and they drive the same course, hole for hole.
+- **There is something to win.** Medals are fractions of the course, so gold
+  means the same thing on a brutal track and a gentle one, and the author medal
+  means a car actually finished. A genetic algorithm with no finish line is why
+  watching one goes slack after five minutes.
+- **The search is shared.** Everyone on the same track code lands in the same
+  room, and champions migrate between their populations over WebRTC. No server.
+
+## Islands
+
+The interesting thing about running a genetic algorithm in a tab is also its
+limit: your population is alone. It climbs one hill, settles into one local
+optimum, and the only way out is patience or a restart. Somebody else's tab is
+meanwhile stuck somewhere completely different, holding the answer you needed.
+
+So the rooms connect them. At the end of each generation every tab offers its
+champion to the room and takes one back, filling a few of its twenty slots with
+cars it did not breed. That is the island model out of the distributed genetic
+algorithm literature, with browsers as the islands and WebRTC as the sea. A
+migrant lands with a lineage of its own, so **Colour by family** shows a foreign
+line arriving fully formed and then taking hold or dying out.
+
+[Trystero](https://github.com/dmotz/trystero) does the introductions over public
+relays and everything after that is peer to peer. There is no server, nothing is
+stored, and nobody's cars pass through a machine we own. It is a separate 22 kB
+chunk fetched only if you join, and joining is always a button: announcing you
+to strangers on public infrastructure because you opened a page is not a thing
+to do to a person.
+
+Nothing off the network is trusted. A genome goes straight into a physics
+engine, so every field is checked against the same ranges the mutation operator
+clamps to, and anything failing is dropped rather than repaired. A peer sending
+ten thousand wheels, a NaN spoke, two wheels on one corner or a chassis a
+kilometre wide costs you nothing. `tests/wire.test.ts` is nineteen tests of
+exactly that, running the messages through JSON first the way the transport
+does.
+
+The migration seam is a function rather than a socket, so the island model is
+tested offline and deterministically: migrants land after the elites so they
+compete rather than being culled first, and asking for migrants with nobody
+connected leaves the local search unchanged bit for bit.
 
 ## Where this came from
 
@@ -22,7 +69,7 @@ since 2013. It was one 1,119 line file of globals running on a Flash era port of
 Box2D, with `Math.random` monkey patched, two `setInterval` timers that drifted
 apart, a fixed 800x400 layout, and DOM writes on every physics step.
 
-BoxCar3D is a rebuild of that idea. Four things are genuinely different:
+BoxCar3D is a rebuild of that idea. Five things are genuinely different:
 
 1. **It is 3D.** Cars run on [Box3D](https://github.com/erincatto/box3d), Erin
    Catto's newer engine and a direct descendant of the Box2D the original used,
@@ -38,6 +85,10 @@ BoxCar3D is a rebuild of that idea. Four things are genuinely different:
 4. **You can watch the search, not just the run.** There is a live view of the
    winning car's network, a heatmap of the whole population's weights, and a
    graveyard of every car that has ever died on this course.
+5. **Tracks are designed and shared, and searches are shared too.** The original
+   had one kind of terrain and a random seed, so you could never ask whether a
+   car built for hills could also clear a gap. Now you can build that track,
+   send someone the code, and race their population against yours.
 
 The original 2D game is still here under the **2D** button, rebuilt on
 [planck.js](https://piqnt.com/planck.js/). Both modes share the seed, the
@@ -135,10 +186,11 @@ and most of it changes it more than any single gene does.
 | Control | What it does |
 | ------- | ------------ |
 | Selected for | Distance, distance and speed, air time, or distance per kilo. Air time breeds jumpers; distance per kilo breeds flimsy things that would fall apart under any other rule. |
-| Parents chosen by | Rank, tournament of three, or roulette. |
+| Parents chosen by | Rank, tournament of three, or roulette. Tournament by default, because it measured better. |
 | Breeding | Two point, uniform, or asexual. Asexual turns the whole thing into a mutation-only search, which is worth watching next to the others. |
 | Diversity pressure | Divides a car's fitness by how crowded its corner of the search space is. |
 | Fresh blood | Random newcomers each generation, replacing the worst children. |
+| Migrants | Slots filled by other people's champions instead of your own breeding, once you are in a room. |
 
 **Colour by family** under View gives every car the colour of the line it
 descends from. With diversity pressure at zero you can watch one family take
@@ -153,6 +205,11 @@ three random draws is a harsher filter than an exponential spread over the whole
 field. Roulette sits between them right up until one car runs away with the
 scores, and then it collapses very fast. `tests/ga.test.ts` measures all three
 and pins the ordering.
+
+Measured over 12 runs, tournament reaches 171.3m against rank's 165.0m, and a
+population mean of 148.1 against 142.1, so it is now the default. Rank selection
+is gentler per draw but concentrates parenthood harder over a run, and the
+search loses the weaker lines that were going somewhere.
 
 ## Does any of it actually drive further?
 
@@ -295,6 +352,8 @@ src/
   config.ts        every tunable constant, with the real ranges documented
   core/rng.ts      seedable generator (no global Math.random patching)
   ga/              genomes, the driver network, and evolution: all pure
+  track/spec.ts    a track as knobs, and the code format that carries them
+  net/             the wire format and its validation, and the peer room
   sim/             2D terrain, car construction, the world and its rules
   sim3d/           the same on Box3D, with a banked road and four wheels
   replay/          compact pose recording and the ghost of the best run
@@ -304,9 +363,15 @@ src/
   app/             the fixed timestep loop and the wiring between all of it
 ```
 
-Box3D and three.js are dynamically imported, so the flat mode never downloads
-them. Opening in 3D means waiting for that once, behind a banner, which is why
-the first second or two of a fresh load shows an empty stage.
+Box3D, three.js and Trystero are all dynamically imported, so the flat mode
+never downloads the 3D engine and a tab that never joins a room never downloads
+the transport or touches a relay. Opening in 3D means waiting for that once,
+behind a banner, which is why the first second or two of a fresh load shows an
+empty stage.
+
+Networking touches nothing else. `Simulation.migrantSource` is a function
+returning a genome or null, so the simulation knows nothing about peers and the
+island model is tested without a socket in sight.
 
 ## What changed from the original
 

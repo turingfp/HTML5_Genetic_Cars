@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BoxCar3D · cars that evolve, and learn to drive</title>
+    <title>BoxCar3D · evolve a car, design a track, share the search</title>
     <meta
       name="description"
-      content="A genetic algorithm evolves the shape of a car and the little neural network that drives it, then runs the result on Box3D physics in your browser."
+      content="A genetic algorithm evolves the shape of a car and the small neural network that drives it, on Box3D physics in your browser. Design a track, share the code, and every browser driving it becomes an island in one distributed search."
     />
     <link
       rel="icon"
@@ -19,8 +19,8 @@
         <div class="brand">
           <h1>BoxCar<span>3D</span></h1>
           <p class="tagline">
-            Twenty random cars. The ones that get furthest have kids. Repeat until something climbs
-            the hill.
+            Twenty random cars. The ones that get furthest have kids. Design the hill they climb,
+            share the code, and breed against everyone else driving it.
           </p>
         </div>
         <div class="header-meta">
@@ -128,8 +128,8 @@
         </section>
 
         <section class="panel map-panel">
-          <h2>Track</h2>
-          <canvas id="minimap" aria-label="Track overview"></canvas>
+          <h2>Course map</h2>
+          <canvas id="minimap" aria-label="Course overview"></canvas>
         </section>
 
         <section class="panel controls-panel">
@@ -320,8 +320,27 @@
             </p>
             <p>
               A car scores by how far it gets plus a bonus for average speed. It dies when it stops
-              earning ground, and the whole generation ends early once nobody is making progress,
-              so one crawler cannot hold everyone up. The terrain gets steeper the further you go.
+              earning ground, rolls off the edge, or drops into a gap, and the whole generation ends
+              early once nobody is making progress, so one crawler cannot hold everyone up.
+            </p>
+            <p>
+              The track is a design rather than a dice roll. Length, hills, ramps, gaps, camber and
+              road width, all in the Track panel, all packed into a code about twenty characters
+              long. Send someone yours and they drive the same course hole for hole, which is
+              something the original could not do: it had one kind of terrain, so you could never
+              ask whether a car built for hills could also clear a jump. Medals are fractions of the
+              course, so gold means the same thing on a savage track and a gentle one, and the
+              author medal means a car actually finished.
+            </p>
+            <p>
+              The Room panel is the odd one. A genetic algorithm in one tab is alone: it climbs one
+              hill, settles into one local optimum, and waiting is the only way out, while somebody
+              else's tab is stuck somewhere entirely different holding the answer you needed. So
+              everyone on the same track code lands in the same room, and at the end of each
+              generation each tab offers its best car and takes one back. That is the island model,
+              with browsers as the islands. Turn on Colour by family and you can watch a line
+              arrive from someone else's machine and either take over or die out. It is peer to
+              peer with no server, nothing is stored, and it only happens if you press join.
             </p>
             <p>
               The flat mode is still here under 2D. It is the original problem, rebuilt on

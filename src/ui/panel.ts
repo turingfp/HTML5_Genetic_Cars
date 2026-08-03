@@ -133,8 +133,19 @@ export class Panel {
     this.pauseButton.textContent = paused ? 'Resume' : 'Pause';
   }
 
-  setReplaying(replaying: boolean): void {
-    this.replayButton.textContent = replaying ? 'Back to evolving' : 'Watch best run';
+  /**
+   * Label the ghost button for what pressing it will do.
+   *
+   * The two modes mean different things by it: the flat mode takes over the
+   * view to replay the best run, while 3D leaves the ghost racing the living
+   * cars and only shows or hides it.
+   */
+  setReplaying(on: boolean, mode: '2d' | '3d' = '2d'): void {
+    if (mode === '3d') {
+      this.replayButton.textContent = on ? 'Hide the ghost' : 'Race the ghost';
+      return;
+    }
+    this.replayButton.textContent = on ? 'Back to evolving' : 'Watch best run';
   }
 
   /** Reflect restored settings into the inputs without firing callbacks. */

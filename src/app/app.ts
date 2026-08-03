@@ -125,6 +125,8 @@ export class App {
   private ghost = new Ghost();
   /** The same idea in 3D, which is the mode this opens in. */
   private ghost3d = new Ghost3D();
+  /** Whether the 3D ghost is drawn. It races whether or not you watch it. */
+  private showGhost3d = true;
   private banner: HTMLElement;
   /** Why 3D last refused to start, if it did. */
   private failure3d: string | null = null;
@@ -447,7 +449,7 @@ export class App {
 
     sim.snapshot(this.snapshot3d);
     renderer.draw(sim.track, this.snapshot3d, dt);
-    renderer.drawGhost(this.ghost3d.current());
+    renderer.drawGhost(this.showGhost3d ? this.ghost3d.current() : null);
     this.minimap.draw(
       sim.track.profile,
       this.markersFrom3D(),
@@ -568,6 +570,7 @@ export class App {
     // Each generation races the ghost from the start line again.
     this.ghost.rewind();
     this.ghost3d.rewind();
+    this.syncGhostButton();
 
     this.evaluations += scores.length;
     this.medalBar.update(sorted[0]!.distance, this.trackLength);
@@ -673,7 +676,30 @@ export class App {
     if (this.renderer3d && index < 0) this.renderer3d.followLeader = true;
   }
 
+  /**
+   * The ghost button, which means different things in the two modes.
+   *
+   * The flat mode replays the best run on its own, with the pack hidden. In 3D
+   * the ghost is already out there racing the living cars every generation,
+   * which is the thing worth watching, so the button turns it on and off
+   * instead of taking over the view.
+   */
   private toggleReplay(): void {
+    if (this.mode === '3d') {
+      if (!this.ghost3d.available) {
+        this.flashBanner('No finished run yet. The ghost appears after the first generation.');
+        return;
+      }
+      this.showGhost3d = !this.showGhost3d;
+      this.panel.setReplaying(this.showGhost3d, '3d');
+      this.flashBanner(
+        this.showGhost3d
+          ? `Racing the best run so far: ${this.ghost3d.score.toFixed(1)}m from generation ${this.ghost3d.generation}.`
+          : 'Ghost hidden.',
+      );
+      return;
+    }
+
     if (!this.replaying && !this.ghost.available) {
       this.flashBanner('No finished run to replay yet.');
       return;
@@ -1060,11 +1086,27 @@ export class App {
    * is now running.
    */
   private onModeChanged(): void {
+    this.syncGhostButton();
     this.trackEditor.setMode(this.mode);
     this.medalBar.reset();
     this.room?.setSelf({ name: this.roomName, mode: this.mode });
     this.room?.setTrackLength(this.trackLength);
     this.renderRoom();
+  }
+
+  /**
+   * Label the ghost button for what is actually on screen.
+   *
+   * "Hide the ghost" while there is no ghost to hide is a lie the button told
+   * from the first frame, since showing one is the default and nothing has
+   * finished a run yet.
+   */
+  private syncGhostButton(): void {
+    if (this.mode === '3d') {
+      this.panel.setReplaying(this.showGhost3d && this.ghost3d.available, '3d');
+    } else {
+      this.panel.setReplaying(this.replaying, '2d');
+    }
   }
 
   /** Show the chart and leaderboard belonging to the mode now on screen. */

@@ -306,13 +306,40 @@ Three more measurements, since they point the same way:
   instant death where grinding to a halt is merely slow. 3D is the mode this
   opens in, so reverse is not shipped.
 - **The extra wheels are not free.** Headless throughput fell from 1799 to 1064
-  steps per second in 2D and from 1066 to 903 in 3D, since a car can now carry
+  steps per second in 2D and from 1066 to 903 in 3D (both measured before the
+  solver change below), since a car can now carry
   twice the bodies it used to. Worth it for the distances above, but it is why
   max mode covers less ground per second than it did.
 
 What the driver is *allowed to do* matters more than how much network there is
 to decide it with, and what the body is allowed to *be* matters more than
 either.
+
+### The cars were coming apart
+
+Reported from a phone as cars flying through the air. They were not jumping,
+they were disintegrating. Box3D's revolute joint is a soft constraint, and at
+four sub-steps a hard landing produces a contact impulse it cannot hold: over
+20 generations on three seeds a wheel reached 28.7 metres from its chassis,
+against a legitimate reach of about 2.5, and stayed detached for up to half a
+second. That is long enough to watch a car explode and reassemble.
+
+Eight sub-steps cuts the broken frames five to nine fold, from 1.26% of
+wheel-frames to 0.14% on the worst seed, and roughly halves the peak stretch.
+It costs real throughput: 1954 steps per second down to 1174 on the same
+machine, so max mode covers about 40% less ground per second than it did. Worth
+it, since 3D is what the page opens in and the camera follows the leader, which
+is the car hitting things hardest.
+
+Two things measured and ruled out on the way, recorded so nobody repeats the
+work. Flight is bounded: over 40 generations the highest anything reached was
+14.4 metres above the road, and lateral position tops out at exactly the
+fall-off limit, so that check fires correctly. And motor torque is not what
+tears the joint, though the torque formula was wrong anyway. Force at the
+contact patch is torque over radius, so the budget has to scale *with* radius;
+it divided by radius instead and handed a 0.2 metre wheel 5248 newton-metres,
+far past anything a tyre could transmit. Fixing it left the joints exactly as
+they were and made the best car go further on all three seeds tried.
 
 ## The 3D mode
 

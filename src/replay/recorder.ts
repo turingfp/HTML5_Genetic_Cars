@@ -2,13 +2,23 @@
  * Replay recording.
  *
  * A car's shape never changes, so a replay only needs the pose of the chassis
- * and the two wheels per frame, so nine floats. The original stored every
+ * and each wheel per frame: three floats each. The original stored every
  * polygon of every car every frame, which allocated tens of thousands of
  * objects per second and grew without bound.
+ *
+ * A car can have two to four wheels, so the stride is fixed per recorder rather
+ * than globally.
  */
 
-import { REPLAY_FLOATS_PER_FRAME, REPLAY_MAX_FRAMES } from '../config';
+import { REPLAY_MAX_FRAMES } from '../config';
 import type { CarDef } from '../ga/genome';
+
+const FLOATS_PER_POSE = 3;
+
+/** Floats per frame for a car with this many wheels. */
+export function replayStride(wheelCount: number): number {
+  return (1 + wheelCount) * FLOATS_PER_POSE;
+}
 
 export interface Pose {
   x: number;
@@ -17,61 +27,50 @@ export interface Pose {
 }
 
 export class ReplayRecorder {
+  readonly wheelCount: number;
+  readonly stride: number;
   private data: Float32Array;
   private count = 0;
 
-  constructor(initialFrames = 1024) {
-    this.data = new Float32Array(initialFrames * REPLAY_FLOATS_PER_FRAME);
+  constructor(wheelCount: number, initialFrames = 1024) {
+    this.wheelCount = wheelCount;
+    this.stride = replayStride(wheelCount);
+    this.data = new Float32Array(initialFrames * this.stride);
   }
 
   get frameCount(): number {
     return this.count;
   }
 
-  add(chassis: Pose, wheel1: Pose, wheel2: Pose): void {
+  add(chassis: Pose, wheels: readonly Pose[]): void {
     if (this.count >= REPLAY_MAX_FRAMES) return;
 
-    const needed = (this.count + 1) * REPLAY_FLOATS_PER_FRAME;
+    const needed = (this.count + 1) * this.stride;
     if (needed > this.data.length) {
-      const grown = new Float32Array(Math.min(this.data.length * 2, REPLAY_MAX_FRAMES * REPLAY_FLOATS_PER_FRAME));
+      const grown = new Float32Array(
+        Math.min(this.data.length * 2, REPLAY_MAX_FRAMES * this.stride),
+      );
       grown.set(this.data);
       this.data = grown;
     }
 
-    const o = this.count * REPLAY_FLOATS_PER_FRAME;
     const d = this.data;
-    d[o] = chassis.x;
-    d[o + 1] = chassis.y;
-    d[o + 2] = chassis.angle;
-    d[o + 3] = wheel1.x;
-    d[o + 4] = wheel1.y;
-    d[o + 5] = wheel1.angle;
-    d[o + 6] = wheel2.x;
-    d[o + 7] = wheel2.y;
-    d[o + 8] = wheel2.angle;
+    let o = this.count * this.stride;
+    d[o++] = chassis.x;
+    d[o++] = chassis.y;
+    d[o++] = chassis.angle;
+    for (let i = 0; i < this.wheelCount; i++) {
+      const wheel = wheels[i];
+      d[o++] = wheel?.x ?? 0;
+      d[o++] = wheel?.y ?? 0;
+      d[o++] = wheel?.angle ?? 0;
+    }
     this.count++;
-  }
-
-  /** Read a frame into caller-owned poses, avoiding per-frame allocation. */
-  read(frame: number, chassis: Pose, wheel1: Pose, wheel2: Pose): boolean {
-    if (frame < 0 || frame >= this.count) return false;
-    const o = frame * REPLAY_FLOATS_PER_FRAME;
-    const d = this.data;
-    chassis.x = d[o]!;
-    chassis.y = d[o + 1]!;
-    chassis.angle = d[o + 2]!;
-    wheel1.x = d[o + 3]!;
-    wheel1.y = d[o + 4]!;
-    wheel1.angle = d[o + 5]!;
-    wheel2.x = d[o + 6]!;
-    wheel2.y = d[o + 7]!;
-    wheel2.angle = d[o + 8]!;
-    return true;
   }
 
   /** Trim to exactly the frames recorded, for long-term storage as a ghost. */
   finish(): Float32Array {
-    return this.data.slice(0, this.count * REPLAY_FLOATS_PER_FRAME);
+    return this.data.slice(0, this.count * this.stride);
   }
 }
 
@@ -80,28 +79,31 @@ export interface Replay {
   def: CarDef;
   frames: Float32Array;
   frameCount: number;
+  wheelCount: number;
   score: number;
   generation: number;
 }
 
+/** Read a frame into caller-owned poses, avoiding per-frame allocation. */
 export function readReplayFrame(
   replay: Replay,
   frame: number,
   chassis: Pose,
-  wheel1: Pose,
-  wheel2: Pose,
+  wheels: Pose[],
 ): boolean {
   if (frame < 0 || frame >= replay.frameCount) return false;
-  const o = frame * REPLAY_FLOATS_PER_FRAME;
   const d = replay.frames;
-  chassis.x = d[o]!;
-  chassis.y = d[o + 1]!;
-  chassis.angle = d[o + 2]!;
-  wheel1.x = d[o + 3]!;
-  wheel1.y = d[o + 4]!;
-  wheel1.angle = d[o + 5]!;
-  wheel2.x = d[o + 6]!;
-  wheel2.y = d[o + 7]!;
-  wheel2.angle = d[o + 8]!;
+  let o = frame * replayStride(replay.wheelCount);
+  chassis.x = d[o++]!;
+  chassis.y = d[o++]!;
+  chassis.angle = d[o++]!;
+  while (wheels.length < replay.wheelCount) wheels.push({ x: 0, y: 0, angle: 0 });
+  wheels.length = replay.wheelCount;
+  for (let i = 0; i < replay.wheelCount; i++) {
+    const wheel = wheels[i]!;
+    wheel.x = d[o++]!;
+    wheel.y = d[o++]!;
+    wheel.angle = d[o++]!;
+  }
   return true;
 }

@@ -224,11 +224,12 @@
               running on a Flash port of Box2D.
             </p>
             <p>
-              BoxCar3D is a rebuild of it. Same idea, three changes. Cars now run in three
-              dimensions on Box3D, which is Erin Catto's newer engine and a direct descendant of the
-              Box2D the original used. The road banks from side to side, so a car can roll off the
-              edge instead of only ever getting stuck. And every car carries a small neural network
-              that actually drives it.
+              BoxCar3D is a rebuild of it. Cars now run in three dimensions on Box3D, which is
+              Erin Catto's newer engine and a direct descendant of the Box2D the original used. The
+              road banks from side to side, so a car can roll off the edge instead of only ever
+              getting stuck. Every car carries a small neural network that actually drives it. And
+              the body itself is far more variable: corners rotate as well as stretch, a car has
+              two to four wheels rather than exactly two, and chassis density is a gene.
             </p>
             <p>
               That last one is the real difference. In the original a wheel spun at one fixed speed
@@ -237,6 +238,11 @@
               doing a moment ago, and sets the speed of each wheel from all of that. Its 82 weights
               are genes like any other, so the search is over bodies and drivers at the same time,
               and you can watch both change in the Driver panel.
+            </p>
+            <p>
+              Of those, the body turned out to matter most. Measured over twelve runs, a cleverer
+              driver bought almost nothing, while a more variable body improved the average
+              distance the whole population reached by about 15%. The numbers are in the README.
             </p>
             <p>
               A car scores by how far it gets plus a bonus for average speed. It dies when it stops

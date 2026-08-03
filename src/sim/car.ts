@@ -10,7 +10,6 @@ import {
   CAR_COLLISION_GROUP,
   CAR_SPAWN_X,
   CAR_SPAWN_Y,
-  CHASSIS_DENSITY,
   CHASSIS_FRICTION,
   CHASSIS_RESTITUTION,
   CHASSIS_VERTEX_COUNT,
@@ -41,7 +40,7 @@ export class Car {
   readonly isElite: boolean;
 
   chassis: Body | null = null;
-  wheels: [Body, Body] | null = null;
+  wheels: Body[] | null = null;
   /** Last forward pass of this car's driver, kept for the visualisation. */
   readonly brain = new BrainRuntime();
 
@@ -77,7 +76,7 @@ export class Car {
       const b = def.vertices[(i + 1) % CHASSIS_VERTEX_COUNT]!;
       chassis.createFixture({
         shape: new Polygon([new Vec2(a.x, a.y), new Vec2(b.x, b.y), new Vec2(0, 0)]),
-        density: CHASSIS_DENSITY,
+        density: def.chassisDensity,
         friction: CHASSIS_FRICTION,
         restitution: CHASSIS_RESTITUTION,
         filterGroupIndex: CAR_COLLISION_GROUP,
@@ -85,8 +84,9 @@ export class Car {
     }
 
     const wheels: Body[] = [];
-    for (let i = 0; i < 2; i++) {
-      const anchor = def.vertices[def.wheelVertex[i]!]!;
+    for (let i = 0; i < def.wheels.length; i++) {
+      const spec = def.wheels[i]!;
+      const anchor = def.vertices[spec.vertex]!;
       // Spawn each wheel already at its mounting point. The original dropped
       // them at the origin and let the joint yank them into place, which threw
       // the whole car sideways on the first few steps.
@@ -95,8 +95,8 @@ export class Car {
         position: new Vec2(CAR_SPAWN_X + anchor.x, CAR_SPAWN_Y + anchor.y),
       });
       wheel.createFixture({
-        shape: new Circle(def.wheelRadius[i]!),
-        density: def.wheelDensity[i]!,
+        shape: new Circle(spec.radius),
+        density: spec.density,
         friction: WHEEL_FRICTION,
         restitution: WHEEL_RESTITUTION,
         filterGroupIndex: CAR_COLLISION_GROUP,
@@ -104,15 +104,19 @@ export class Car {
       wheels.push(wheel);
     }
 
-    const totalMass = chassis.getMass() + wheels[0]!.getMass() + wheels[1]!.getMass();
+    const totalMass =
+      chassis.getMass() + wheels.reduce((sum, wheel) => sum + wheel.getMass(), 0);
 
-    for (let i = 0; i < 2; i++) {
-      const anchor = def.vertices[def.wheelVertex[i]!]!;
+    for (let i = 0; i < wheels.length; i++) {
+      const spec = def.wheels[i]!;
+      const anchor = def.vertices[spec.vertex]!;
       const joint = new RevoluteJoint(
         {
           // Torque scales with the car's own weight, so heavy cars are not
-          // automatically hopeless.
-          maxMotorTorque: (totalMass * -GRAVITY_Y) / def.wheelRadius[i]!,
+          // automatically hopeless, and is shared out across however many
+          // wheels there are, so bolting on a third and fourth buys grip
+          // rather than free power.
+          maxMotorTorque: ((totalMass * -GRAVITY_Y) / spec.radius) * (2 / wheels.length),
           motorSpeed: MOTOR_SPEED,
           enableMotor: true,
         },
@@ -128,7 +132,7 @@ export class Car {
     }
 
     this.chassis = chassis;
-    this.wheels = [wheels[0]!, wheels[1]!];
+    this.wheels = wheels;
   }
 
   /**
@@ -199,10 +203,7 @@ export class Car {
     this.score = this.computeScore();
     this.alive = false;
     if (this.chassis) world.destroyBody(this.chassis);
-    if (this.wheels) {
-      world.destroyBody(this.wheels[0]);
-      world.destroyBody(this.wheels[1]);
-    }
+    for (const wheel of this.wheels ?? []) world.destroyBody(wheel);
     this.chassis = null;
     this.wheels = null;
     this.motors = [];

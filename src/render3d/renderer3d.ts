@@ -284,7 +284,7 @@ export class Renderer3D {
 
       const wheels: Mesh[] = [];
       for (const mount of wheelMounts(def)) {
-        const radius = def.base.wheelRadius[mount.wheel]!;
+        const radius = def.base.wheels[mount.wheel]!.radius;
         const width = wheelHalfTread(radius) * 2;
         // A cylinder matching the physics hull exactly. Three builds cylinders
         // along y, so it is turned to lie along the axle.

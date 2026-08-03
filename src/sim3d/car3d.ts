@@ -1,12 +1,12 @@
 /**
- * A 3D car: the silhouette extruded into a convex hull, on four wheels.
+ * A 3D car: the silhouette extruded into a convex hull, on mirrored pairs of
+ * wheels, so a two wheeled silhouette becomes four and a four wheeled one eight.
  */
 
 import {
   CAR_COLLISION_GROUP,
   CAR_SPAWN_X,
   CAR_SPAWN_Y,
-  CHASSIS_DENSITY,
   CHASSIS_FRICTION,
   CHASSIS_RESTITUTION,
   FALL_OFF_DEPTH,
@@ -105,14 +105,14 @@ export class Car3D {
     });
     chassis.createHull({
       points: chassisHullPoints(def),
-      density: CHASSIS_DENSITY,
+      density: def.base.chassisDensity,
       friction: CHASSIS_FRICTION,
       restitution: CHASSIS_RESTITUTION,
       filter,
     });
 
     for (const mount of wheelMounts(def)) {
-      const radius = def.base.wheelRadius[mount.wheel]!;
+      const radius = def.base.wheels[mount.wheel]!.radius;
       const wheel = world.createBody({
         type: 'dynamic',
         position: {
@@ -123,7 +123,7 @@ export class Car3D {
       });
       wheel.createHull({
         points: wheelHullPoints(radius),
-        density: def.base.wheelDensity[mount.wheel]!,
+        density: def.base.wheels[mount.wheel]!.density,
         friction: WHEEL_FRICTION,
         restitution: WHEEL_RESTITUTION,
         filter,
@@ -135,7 +135,7 @@ export class Car3D {
       chassis.getMass() + this.wheels.reduce((sum, wheel) => sum + wheel.getMass(), 0);
 
     wheelMounts(def).forEach((mount, i) => {
-      const radius = def.base.wheelRadius[mount.wheel]!;
+      const radius = def.base.wheels[mount.wheel]!.radius;
       const joint = world.createRevoluteJoint(chassis, this.wheels[i]!, {
         // The revolute hinge turns about its frame's z axis, which is exactly
         // the axle direction for a car facing along +x.
@@ -143,13 +143,13 @@ export class Car3D {
         localFrameB: { position: { x: 0, y: 0, z: 0 } },
         enableMotor: true,
         motorSpeed: MOTOR_SPEED,
-        // Four wheels share the load, so each gets a quarter of the torque a
-        // two-wheeled car would need.
-        maxMotorTorque: (totalMass * -GRAVITY_Y) / radius / 2,
+        // The wheels share the load, so a car with more of them gets grip
+        // rather than free power.
+        maxMotorTorque: ((totalMass * -GRAVITY_Y) / radius) * (2 / this.wheels.length),
       });
       this.motors.push(joint);
-      // A mount belongs to wheel 0 or wheel 1 of the silhouette, and both sides
-      // of a pair take the same output, so the car cannot steer by accident.
+      // A mount belongs to one wheel of the silhouette, and both sides of a
+      // pair take the same output, so the car cannot steer by accident.
       this.motorOutput.push(mount.wheel);
     });
 

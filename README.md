@@ -22,7 +22,7 @@ since 2013. It was one 1,119 line file of globals running on a Flash era port of
 Box2D, with `Math.random` monkey patched, two `setInterval` timers that drifted
 apart, a fixed 800x400 layout, and DOM writes on every physics step.
 
-BoxCar3D is a rebuild of that idea. Three things are genuinely different:
+BoxCar3D is a rebuild of that idea. Four things are genuinely different:
 
 1. **It is 3D.** Cars run on [Box3D](https://github.com/erincatto/box3d), Erin
    Catto's newer engine and a direct descendant of the Box2D the original used,
@@ -32,7 +32,10 @@ BoxCar3D is a rebuild of that idea. Three things are genuinely different:
 2. **Cars have a driver.** Each one carries a small neural network that reads
    how the car is sitting and moving and sets the speed of each wheel. Its
    weights are genes like any other.
-3. **You can watch the search, not just the run.** There is a live view of the
+3. **The body is far more variable.** Corners rotate as well as stretch, a car
+   carries two to four wheels rather than exactly two, and chassis density is a
+   gene. Measured, this is what actually improves the cars.
+4. **You can watch the search, not just the run.** There is a live view of the
    winning car's network, a heatmap of the whole population's weights, and a
    graveyard of every car that has ever died on this course.
 
@@ -76,7 +79,7 @@ Three lookaheads rather than one for a similar reason. A single sample is the
 gradient the car is already on, so it can only react. A wall at `far` with flat
 ground at `near` is a run-up; the same wall at `near` is a problem now.
 
-That comes to 82 weights. Small on purpose: it fits on screen, it runs twenty
+That comes to 94 weights, one output per wheel slot. Small on purpose: it fits on screen, it runs twenty
 times per physics step without showing up in a profile, and it is enough to be
 interesting without needing anything cleverer than a genetic algorithm to train
 it.
@@ -101,48 +104,82 @@ which is selection fixing a weight because every car that survived happens to
 share it. Bands that stay noisy are weights nothing depends on. The fitness
 chart tells you the search is working; this tells you where.
 
-### Does a smarter driver actually drive further?
+## The body
 
-Mostly not, and it is worth being straight about that.
+The original's car was one shape with different numbers in it. Eight corners
+pinned to fixed compass directions, evolving only their distance from the
+centre, and four of those eight were pinned to an axis so they had one free
+number rather than two. Exactly two wheels. One chassis density shared by every
+car ever built. So the search could stretch that octagon but never leave it.
 
-Each row below is 12 runs (6 track seeds by 2 population seeds), 30 generations
-each in 2D and 20 in 3D, reporting the furthest any car got. `best` is the peak
-across all generations, `final` the last generation, `mean` the average across
-them.
+Three things are genes here that were constants there:
 
-| Driver                                  | 2D best | 2D final | 3D best | 3D final |
-| --------------------------------------- | ------- | -------- | ------- | -------- |
-| Reflex only, 6 inputs, re-roll mutation  |   156.3 |    136.9 |    72.3 |     58.0 |
-| Memory, 8 inputs, Gaussian creep         |   158.9 |    144.5 |    73.5 |     53.7 |
+- **Corners can rotate as well as stretch.** Each is a polar pair, an angle and
+  a length, and the angle can swing within its own sector. Corners therefore
+  stay in order, which is what keeps the fan of triangles the chassis is built
+  from convex, but wedges, slivers and long snouts are now describable.
+- **Two to four wheels.** Wheel count is a gene. Gaining or losing one is the
+  most disruptive single mutation available, so like wheel placement it is
+  throttled by the mutation size as well as the rate. Torque is shared out
+  across however many wheels there are, so a fourth buys grip rather than free
+  power. In 3D every wheel is a mirrored pair, so a four wheeled silhouette runs
+  on eight.
+- **Chassis density.** Where the mass sits relative to the wheels is now
+  something evolution can choose.
 
-So: a fraction better on peak distance, inside the noise. The architecture is
-strictly more capable and it is far more interesting to watch, but the driver is
-not what is holding these cars back. The body is. A controller that can only
-vary wheel speed cannot steer, cannot shift weight, and cannot change gearing,
-so there is a low ceiling on what it can contribute.
+## Does any of it actually drive further?
 
-Two things that did move the numbers, in opposite directions:
+This is worth measuring rather than assuming, and the answer is interesting: the
+driver barely matters and the body matters a lot.
+
+Each row is 12 runs (6 track seeds by 2 population seeds), 30 generations in 2D
+and 20 in 3D, reporting how far the furthest car got. `best` is the peak across
+all generations, `mean` the average across them, which is the better measure of
+whether the whole population improved rather than one lucky car.
+
+| Configuration                          | 2D best | 2D mean | 3D best | 3D mean |
+| -------------------------------------- | ------- | ------- | ------- | ------- |
+| Reflex driver, fixed body (as inherited) |   156.3 |   125.4 |    72.3 |    47.2 |
+| Memory driver, fixed body               |   158.9 |   123.6 |    73.5 |    47.5 |
+| Memory driver, variable body            |   165.0 |   142.1 |    79.8 |    53.1 |
+
+Making the driver cleverer bought almost nothing: a couple of metres on peak
+distance, inside the noise, and nothing at all on the mean. Making the body more
+variable moved every column, and moved the mean by 15% in 2D and 12% in 3D. A
+controller that can only vary wheel speed cannot steer, shift weight or change
+gearing, so there was never much headroom in it. Being able to grow a third
+wheel or grind a corner into a wedge is a different kind of freedom.
+
+Three more measurements, since they point the same way:
 
 - **Making the network bigger made it worse.** At 8 hidden units instead of 5,
   2D best fell from 158.9 to 151.1. A population of 20 cars cannot explore a
-  search space that wide in the generations anyone will sit through.
+  search space that wide in the generations anyone will sit through, so the
+  hidden layer stayed at 5.
 - **Giving the driver more authority helped in 2D and hurt in 3D.** Letting an
   output command real reverse, so a car can back up and take another run at an
-  obstacle, took 2D best from 158.9 to 163.6. The same change took 3D best from
-  73.5 down to 68.1, because reversing near a banked edge is how a car falls
-  off, and falling off is instant death where grinding to a halt is merely slow.
-  3D is the mode this opens in, so reverse is not shipped.
+  obstacle, took 2D best from 158.9 to 163.6, the largest gain any change to the
+  driver produced. The same change took 3D best from 73.5 down to 68.1, because
+  reversing near a banked edge is how a car falls off, and falling off is
+  instant death where grinding to a halt is merely slow. 3D is the mode this
+  opens in, so reverse is not shipped.
+- **The extra wheels are not free.** Headless throughput fell from 1799 to 1064
+  steps per second in 2D and from 1066 to 903 in 3D, since a car can now carry
+  twice the bodies it used to. Worth it for the distances above, but it is why
+  max mode covers less ground per second than it did.
 
-That last pair is the interesting result. What the driver is *allowed to do*
-matters much more than how much network there is to decide it with.
+What the driver is *allowed to do* matters more than how much network there is
+to decide it with, and what the body is allowed to *be* matters more than
+either.
 
 ## The 3D mode
 
 A 3D car is the 2D silhouette given a width. The chassis outline is extruded
-into a convex hull and each wheel becomes a pair, so a car evolved in 2D is
-still a valid car here. That adds two genes, how wide the body is and how far
-the wheels sit outboard, and one new way to fail. Narrow and tall wins the early
-flat ground, and something wider usually has to evolve to survive the camber.
+into a convex hull and each wheel becomes a mirrored pair, so a car evolved in
+2D is still a valid car here and a four wheeled silhouette runs on eight. That
+adds two genes, how wide the body is and how far the wheels sit outboard, and
+one new way to fail. Narrow and tall wins the early flat ground, and something
+wider usually has to evolve to survive the camber.
 
 Wheels are real wheels: sixteen sided prisms about the axle, so a tyre has a
 flat tread and a contact patch that grips. They started as capsules, which on a

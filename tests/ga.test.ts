@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   CHASSIS_AXIS_MIN,
   CHASSIS_AXIS_RANGE,
+  CHASSIS_DENSITY_MIN,
+  CHASSIS_DENSITY_RANGE,
   CHASSIS_VERTEX_COUNT,
+  MAX_WHEEL_COUNT,
+  MIN_WHEEL_COUNT,
   WHEEL_DENSITY_MIN,
   WHEEL_DENSITY_RANGE,
   WHEEL_RADIUS_MIN,
@@ -15,9 +19,16 @@ import { nextGeneration, pickParentIndex, sortByScore, type CarScore } from '../
 
 const EPS = 1e-9;
 
-function withinAxisBounds(value: number): boolean {
-  const m = Math.abs(value);
-  return m === 0 || (m >= CHASSIS_AXIS_MIN - EPS && m < CHASSIS_AXIS_MIN + CHASSIS_AXIS_RANGE + EPS);
+/** A corner's distance from the centre, whatever direction it points in. */
+function withinReachBounds(x: number, y: number): boolean {
+  const r = Math.hypot(x, y);
+  return r >= CHASSIS_AXIS_MIN - EPS && r < CHASSIS_AXIS_MIN + CHASSIS_AXIS_RANGE + EPS;
+}
+
+/** Angle of a corner, normalised into [0, 2pi). */
+function angleOf(x: number, y: number): number {
+  const a = Math.atan2(y, x);
+  return a < 0 ? a + Math.PI * 2 : a;
 }
 
 /**
@@ -30,32 +41,72 @@ function withinAxisBounds(value: number): boolean {
  * problem instead of an opaque timeout.
  */
 function genomeViolation(def: CarDef): string | null {
-  for (const i of [0, 1] as const) {
-    const radius = def.wheelRadius[i];
-    if (!(radius >= WHEEL_RADIUS_MIN - EPS && radius < WHEEL_RADIUS_MIN + WHEEL_RADIUS_RANGE + EPS)) {
-      return `wheelRadius[${i}] out of range: ${radius}`;
-    }
-    const density = def.wheelDensity[i];
-    if (
-      !(density >= WHEEL_DENSITY_MIN - EPS && density < WHEEL_DENSITY_MIN + WHEEL_DENSITY_RANGE + EPS)
-    ) {
-      return `wheelDensity[${i}] out of range: ${density}`;
-    }
-    const vertex = def.wheelVertex[i];
-    if (!(Number.isInteger(vertex) && vertex >= 0 && vertex < CHASSIS_VERTEX_COUNT)) {
-      return `wheelVertex[${i}] out of range: ${vertex}`;
-    }
+  if (def.wheels.length < MIN_WHEEL_COUNT || def.wheels.length > MAX_WHEEL_COUNT) {
+    return `wheel count out of range: ${def.wheels.length}`;
   }
-  if (def.wheelVertex[0] === def.wheelVertex[1]) {
-    return `both wheels on vertex ${def.wheelVertex[0]}`;
+
+  const seen = new Set<number>();
+  for (let i = 0; i < def.wheels.length; i++) {
+    const wheel = def.wheels[i]!;
+    if (
+      !(wheel.radius >= WHEEL_RADIUS_MIN - EPS &&
+        wheel.radius < WHEEL_RADIUS_MIN + WHEEL_RADIUS_RANGE + EPS)
+    ) {
+      return `wheel ${i} radius out of range: ${wheel.radius}`;
+    }
+    if (
+      !(wheel.density >= WHEEL_DENSITY_MIN - EPS &&
+        wheel.density < WHEEL_DENSITY_MIN + WHEEL_DENSITY_RANGE + EPS)
+    ) {
+      return `wheel ${i} density out of range: ${wheel.density}`;
+    }
+    if (
+      !(Number.isInteger(wheel.vertex) &&
+        wheel.vertex >= 0 &&
+        wheel.vertex < CHASSIS_VERTEX_COUNT)
+    ) {
+      return `wheel ${i} vertex out of range: ${wheel.vertex}`;
+    }
+    // Two wheels on one corner is a unicycle that cannot drive.
+    if (seen.has(wheel.vertex)) return `two wheels share vertex ${wheel.vertex}`;
+    seen.add(wheel.vertex);
+  }
+
+  if (
+    !(def.chassisDensity >= CHASSIS_DENSITY_MIN - EPS &&
+      def.chassisDensity < CHASSIS_DENSITY_MIN + CHASSIS_DENSITY_RANGE + EPS)
+  ) {
+    return `chassis density out of range: ${def.chassisDensity}`;
+  }
+
+  if (def.spokes.length !== CHASSIS_VERTEX_COUNT) {
+    return `expected ${CHASSIS_VERTEX_COUNT} spokes, got ${def.spokes.length}`;
   }
   if (def.vertices.length !== CHASSIS_VERTEX_COUNT) {
     return `expected ${CHASSIS_VERTEX_COUNT} vertices, got ${def.vertices.length}`;
   }
-  for (let i = 0; i < def.vertices.length; i++) {
+  for (let i = 0; i < def.spokes.length; i++) {
+    const spoke = def.spokes[i]!;
+    if (!(spoke.angle >= -1 - EPS && spoke.angle <= 1 + EPS)) {
+      return `spoke ${i} angle out of range: ${spoke.angle}`;
+    }
     const v = def.vertices[i]!;
-    if (!withinAxisBounds(v.x)) return `vertex ${i} x out of range: ${v.x}`;
-    if (!withinAxisBounds(v.y)) return `vertex ${i} y out of range: ${v.y}`;
+    if (!withinReachBounds(v.x, v.y)) return `vertex ${i} out of reach: ${v.x},${v.y}`;
+  }
+
+  // The corners must stay in counter-clockwise order, or the fan of triangles
+  // the chassis is built from stops being convex. Compared as signed steps
+  // rather than raw angles: corner 0 straddles zero, so its absolute angle can
+  // read as either side of 2pi.
+  for (let i = 1; i < def.vertices.length; i++) {
+    const prev = def.vertices[i - 1]!;
+    const here = def.vertices[i]!;
+    let step = angleOf(here.x, here.y) - angleOf(prev.x, prev.y);
+    if (step > Math.PI) step -= Math.PI * 2;
+    if (step < -Math.PI) step += Math.PI * 2;
+    if (step <= 0) {
+      return `vertex ${i} is not past vertex ${i - 1} around the circle`;
+    }
   }
   return null;
 }
@@ -97,18 +148,34 @@ describe('randomCar', () => {
     for (const def of first) expectValidCar(def);
   });
 
-  it('pins axis-aligned vertices to their axis', () => {
-    const def = randomCar(rngFromSeed('axes'));
-    // Octants 0 and 4 lie on the x axis; 2 and 6 lie on the y axis.
-    expect(def.vertices[0]!.y).toBe(0);
-    expect(def.vertices[4]!.y).toBe(0);
-    expect(def.vertices[2]!.x).toBe(0);
-    expect(def.vertices[6]!.x).toBe(0);
-    // Signs follow the octant layout.
-    expect(def.vertices[0]!.x).toBeGreaterThan(0);
-    expect(def.vertices[4]!.x).toBeLessThan(0);
-    expect(def.vertices[2]!.y).toBeGreaterThan(0);
-    expect(def.vertices[6]!.y).toBeLessThan(0);
+  it('keeps every corner inside its own sector', () => {
+    // The original pinned corners to fixed compass directions. They can now
+    // swing, but never past the middle of a neighbouring sector, which is what
+    // keeps them in order.
+    const rng = rngFromSeed('sectors');
+    const sector = (Math.PI * 2) / CHASSIS_VERTEX_COUNT;
+    for (let n = 0; n < 200; n++) {
+      const def = randomCar(rng);
+      for (let i = 0; i < CHASSIS_VERTEX_COUNT; i++) {
+        const v = def.vertices[i]!;
+        let offset = angleOf(v.x, v.y) - i * sector;
+        if (offset > Math.PI) offset -= Math.PI * 2;
+        if (offset < -Math.PI) offset += Math.PI * 2;
+        expect(Math.abs(offset)).toBeLessThan(sector / 2 + EPS);
+      }
+    }
+  });
+
+  it('varies the number of wheels', () => {
+    const rng = rngFromSeed('counts');
+    const counts = new Set<number>();
+    for (let i = 0; i < 200; i++) counts.add(randomCar(rng).wheels.length);
+    // A population that is always two wheeled would be the old genome.
+    expect(counts.size).toBeGreaterThan(1);
+    for (const c of counts) {
+      expect(c).toBeGreaterThanOrEqual(MIN_WHEEL_COUNT);
+      expect(c).toBeLessThanOrEqual(MAX_WHEEL_COUNT);
+    }
   });
 });
 
@@ -139,12 +206,27 @@ describe('mutate', () => {
     const before = cloneCar(def);
     // Always mutate, but only within 2% of each gene's range.
     mutate(rng, def, { rate: 1, size: 0.02 });
-    expect(Math.abs(def.wheelRadius[0] - before.wheelRadius[0])).toBeLessThan(
+    expect(def.wheels).toHaveLength(before.wheels.length);
+    expect(Math.abs(def.wheels[0]!.radius - before.wheels[0]!.radius)).toBeLessThan(
       WHEEL_RADIUS_RANGE * 0.02 + EPS,
     );
-    expect(Math.abs(def.wheelDensity[0] - before.wheelDensity[0])).toBeLessThan(
+    expect(Math.abs(def.wheels[0]!.density - before.wheels[0]!.density)).toBeLessThan(
       WHEEL_DENSITY_RANGE * 0.02 + EPS,
     );
+  });
+
+  it('sometimes adds or removes a wheel', () => {
+    // Structural change is throttled by the mutation size as well as the rate,
+    // so this uses both at full to show it happens at all.
+    const rng = rngFromSeed('structure');
+    let changed = 0;
+    for (let i = 0; i < 400; i++) {
+      const def = randomCar(rng);
+      const before = def.wheels.length;
+      mutate(rng, def, { rate: 1, size: 1 });
+      if (def.wheels.length !== before) changed++;
+    }
+    expect(changed).toBeGreaterThan(0);
   });
 });
 
@@ -156,32 +238,37 @@ describe('crossover', () => {
       const b = randomCar(rng);
       const child = crossover(rng, a, b);
       expect(genomeViolation(child)).toBeNull();
-      for (const k of [0, 1] as const) {
-        expect([a.wheelRadius[k], b.wheelRadius[k]]).toContain(child.wheelRadius[k]);
-        expect([a.wheelDensity[k], b.wheelDensity[k]]).toContain(child.wheelDensity[k]);
+
+      // The wheel count comes from one parent or the other.
+      expect([a.wheels.length, b.wheels.length]).toContain(child.wheels.length);
+
+      for (let k = 0; k < child.wheels.length; k++) {
+        const wheel = child.wheels[k]!;
+        const sources = [a.wheels[k], b.wheels[k]].filter((w) => w !== undefined);
+        expect(sources.map((w) => w!.radius)).toContain(wheel.radius);
+        expect(sources.map((w) => w!.density)).toContain(wheel.density);
       }
-      // The first wheel is always inherited. The second is too, unless both
-      // parents named the same vertex, in which case it gets moved off.
-      expect([a.wheelVertex[0], b.wheelVertex[0]]).toContain(child.wheelVertex[0]);
-      const inherited = [a.wheelVertex[1], b.wheelVertex[1]].includes(child.wheelVertex[1]);
-      if (!inherited) {
-        // Repair only fires when the inherited value collided with wheel 0.
-        expect([a.wheelVertex[1], b.wheelVertex[1]]).toContain(child.wheelVertex[0]);
-      }
+
+      // Chassis corners are inherited whole, angle and length together.
       for (let v = 0; v < CHASSIS_VERTEX_COUNT; v++) {
-        expect([a.vertices[v]!.x, b.vertices[v]!.x]).toContain(child.vertices[v]!.x);
+        expect([a.spokes[v]!.length, b.spokes[v]!.length]).toContain(child.spokes[v]!.length);
+        expect([a.spokes[v]!.angle, b.spokes[v]!.angle]).toContain(child.spokes[v]!.angle);
       }
+      expect([a.chassisDensity, b.chassisDensity]).toContain(child.chassisDensity);
     }
   });
 
-  it('does not alias parent vertex objects', () => {
+  it('does not alias parent spoke or wheel objects', () => {
     const rng = rngFromSeed('alias');
     const a = randomCar(rng);
     const b = randomCar(rng);
     const child = crossover(rng, a, b);
-    child.vertices[0]!.x = 999;
-    expect(a.vertices[0]!.x).not.toBe(999);
-    expect(b.vertices[0]!.x).not.toBe(999);
+    child.spokes[0]!.length = 999;
+    child.wheels[0]!.radius = 999;
+    expect(a.spokes[0]!.length).not.toBe(999);
+    expect(b.spokes[0]!.length).not.toBe(999);
+    expect(a.wheels[0]!.radius).not.toBe(999);
+    expect(b.wheels[0]!.radius).not.toBe(999);
   });
 });
 
@@ -249,8 +336,8 @@ describe('nextGeneration', () => {
     expect(gen.filter((e) => e.isElite)).toHaveLength(3);
     expect(gen[0]!.def).toEqual(best.def);
     // Cloned, not shared: mutating the new generation must not touch the old.
-    gen[0]!.def.vertices[0]!.x = 42;
-    expect(best.def.vertices[0]!.x).not.toBe(42);
+    gen[0]!.def.spokes[0]!.length = 42;
+    expect(best.def.spokes[0]!.length).not.toBe(42);
   });
 
   it('produces valid cars and respects population size', () => {

@@ -40,12 +40,36 @@ export const CHASSIS_AXIS_RANGE = 1.1;
 /** Chassis vertices, one per octant. Changing this changes the genome length. */
 export const CHASSIS_VERTEX_COUNT = 8;
 
+/**
+ * How far a chassis corner may swing inside its own sector, as a fraction of
+ * half a sector.
+ *
+ * The original pinned all eight corners to fixed compass directions and evolved
+ * only their distance from the centre, and four of the eight were pinned to an
+ * axis so they had one free number rather than two. Every car was therefore the
+ * same octagon with different radii. Letting a corner rotate within its sector
+ * keeps the corners in order, so the fan of triangles stays convex, while
+ * opening up wedges, slivers and long snouts that the old scheme could not
+ * describe. Kept below 1 so two neighbours can never cross over.
+ */
+export const SPOKE_ANGLE_JITTER = 0.8;
+
+/** Wheels per car. The original had exactly two. */
+export const MIN_WHEEL_COUNT = 2;
+export const MAX_WHEEL_COUNT = 4;
+
 /** 8 chassis axes + 2 wheel radii + 2 wheel densities + 2 wheel attachments. */
 export const GENE_COUNT = 14;
 
 /* ── Body materials ─────────────────────────────────────────────────────── */
 
-export const CHASSIS_DENSITY = 80;
+/**
+ * Chassis density. Was a constant shared by every car; it is now a gene, so
+ * where the mass sits relative to the wheels is something evolution can choose.
+ * The old constant of 80 sits inside the range.
+ */
+export const CHASSIS_DENSITY_MIN = 25;
+export const CHASSIS_DENSITY_RANGE = 115;
 export const CHASSIS_FRICTION = 10;
 export const CHASSIS_RESTITUTION = 0.2;
 
@@ -187,9 +211,6 @@ export const DEFAULT_ELITE_COUNT = 1;
 export const MAX_ELITE_COUNT = 10;
 
 /* ── Replay ─────────────────────────────────────────────────────────────── */
-
-/** chassis (x, y, angle) + two wheels (x, y, angle) per recorded frame. */
-export const REPLAY_FLOATS_PER_FRAME = 9;
 
 /** Ten minutes at 60Hz. Recording stops past this to bound memory. */
 export const REPLAY_MAX_FRAMES = PHYSICS_HZ * 60 * 10;

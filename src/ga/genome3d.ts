@@ -82,9 +82,7 @@ export const car3DOps: GenomeOps<Car3DDef> = {
   clone: cloneCar3D,
 };
 
-/**
- * The 16 corners of the chassis hull: the silhouette mirrored to both sides.
- */
+/** The chassis hull: the silhouette mirrored to both sides. */
 export function chassisHullPoints(def: Car3DDef): { x: number; y: number; z: number }[] {
   const points: { x: number; y: number; z: number }[] = [];
   for (const v of def.base.vertices) {
@@ -94,12 +92,15 @@ export function chassisHullPoints(def: Car3DDef): { x: number; y: number; z: num
   return points;
 }
 
-/** Where each of the four wheels sits, in chassis-local space. */
-export function wheelMounts(def: Car3DDef): { x: number; y: number; z: number; wheel: 0 | 1 }[] {
-  const mounts: { x: number; y: number; z: number; wheel: 0 | 1 }[] = [];
-  for (const wheel of [0, 1] as const) {
-    const v = def.base.vertices[def.base.wheelVertex[wheel]!]!;
-    const z = def.halfWidth + def.wheelGap;
+/**
+ * Where each wheel sits, in chassis-local space. Every wheel of the silhouette
+ * becomes a mirrored pair, so a two wheeler has four and a four wheeler eight.
+ */
+export function wheelMounts(def: Car3DDef): { x: number; y: number; z: number; wheel: number }[] {
+  const mounts: { x: number; y: number; z: number; wheel: number }[] = [];
+  const z = def.halfWidth + def.wheelGap;
+  for (let wheel = 0; wheel < def.base.wheels.length; wheel++) {
+    const v = def.base.vertices[def.base.wheels[wheel]!.vertex]!;
     mounts.push({ x: v.x, y: v.y, z: -z, wheel });
     mounts.push({ x: v.x, y: v.y, z, wheel });
   }

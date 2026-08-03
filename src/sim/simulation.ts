@@ -41,7 +41,7 @@ export interface CarSnapshot {
   /** The genome, so the renderer can build geometry without the physics world. */
   def: CarDef | null;
   chassis: Pose;
-  wheels: [Pose, Pose];
+  wheels: Pose[];
   /** Remaining health in [0, 1]. */
   health01: number;
   maxX: number;
@@ -105,6 +105,10 @@ export class Simulation {
   /** Reused terrain lookahead, so stepping allocates nothing. */
   private readonly probes: SlopeProbes = { near: 0, mid: 0, far: 0 };
 
+  /** Scratch poses handed to the recorders, so recording allocates nothing. */
+  private readonly chassisPose: Pose = { x: 0, y: 0, angle: 0 };
+  private readonly posePool: Pose[] = [];
+
   /** Scores of cars that have already died this generation. */
   private scores: CarScore[] = [];
   private trackBodies: Body[] = [];
@@ -159,7 +163,7 @@ export class Simulation {
 
   private spawn(entries: CarEntry[]): void {
     this.cars = entries.map((e) => new Car(this.world, e.def, e.index, e.isElite));
-    this.recorders = this.cars.map(() => new ReplayRecorder());
+    this.recorders = this.cars.map((car) => new ReplayRecorder(car.def.wheels.length));
     this.aliveCount = this.cars.length;
     this.scores = [];
     this.frame = 0;
@@ -174,13 +178,20 @@ export class Simulation {
       const car = this.cars[i]!;
       if (!car.alive || !car.chassis || !car.wheels) continue;
       const c = car.chassis.getPosition();
-      const w1 = car.wheels[0].getPosition();
-      const w2 = car.wheels[1].getPosition();
-      this.recorders[i]!.add(
-        { x: c.x, y: c.y, angle: car.chassis.getAngle() },
-        { x: w1.x, y: w1.y, angle: car.wheels[0].getAngle() },
-        { x: w2.x, y: w2.y, angle: car.wheels[1].getAngle() },
-      );
+      const poses = this.posePool;
+      while (poses.length < car.wheels.length) poses.push({ x: 0, y: 0, angle: 0 });
+      for (let w = 0; w < car.wheels.length; w++) {
+        const body = car.wheels[w]!;
+        const p = body.getPosition();
+        const pose = poses[w]!;
+        pose.x = p.x;
+        pose.y = p.y;
+        pose.angle = body.getAngle();
+      }
+      this.chassisPose.x = c.x;
+      this.chassisPose.y = c.y;
+      this.chassisPose.angle = car.chassis.getAngle();
+      this.recorders[i]!.add(this.chassisPose, poses);
     }
   }
 
@@ -283,7 +294,7 @@ export class Simulation {
         index: out.cars.length,
         def: null,
         chassis: emptyPose(),
-        wheels: [emptyPose(), emptyPose()],
+        wheels: [],
         health01: 0,
         maxX: 0,
         activations: new Float32Array(BRAIN_NODE_COUNT),
@@ -320,7 +331,9 @@ export class Simulation {
       snap.chassis.x = c.x;
       snap.chassis.y = c.y;
       snap.chassis.angle = car.chassis.getAngle();
-      for (let w = 0; w < 2; w++) {
+      while (snap.wheels.length < car.wheels.length) snap.wheels.push(emptyPose());
+      snap.wheels.length = car.wheels.length;
+      for (let w = 0; w < car.wheels.length; w++) {
         const p = car.wheels[w]!.getPosition();
         snap.wheels[w]!.x = p.x;
         snap.wheels[w]!.y = p.y;

@@ -10,7 +10,7 @@
  * each wheel. So a car can learn to ease off before a crest, or dig in on a
  * climb, instead of flooring it into everything.
  *
- * Kept deliberately small: 82 numbers, run 20 times per physics step, and you
+ * Kept deliberately small: 94 numbers, run 20 times per physics step, and you
  * can watch every weight of it on screen without squinting.
  *
  * A note on sizing, because bigger looked obviously better and was not. An
@@ -21,6 +21,7 @@
  * there is. See the README for the numbers.
  */
 
+import { MAX_WHEEL_COUNT } from '../config';
 import type { Rng } from '../core/rng';
 import type { MutationParams } from './mutation';
 
@@ -30,8 +31,13 @@ export const BRAIN_INPUTS = 8;
 /** The middle layer, where combinations of senses turn into intentions. */
 export const BRAIN_HIDDEN = 5;
 
-/** One output per wheel. In 3D the two wheels of a pair share an output. */
-export const BRAIN_OUTPUTS = 2;
+/**
+ * One output per wheel slot. A car with fewer wheels simply leaves the spare
+ * outputs unread, which costs a handful of weights and keeps every genome the
+ * same length, so crossover between a two wheeler and a four wheeler needs no
+ * special case. In 3D the two wheels of a mirrored pair share an output.
+ */
+export const BRAIN_OUTPUTS = MAX_WHEEL_COUNT;
 
 /**
  * Each hidden unit also sees what every hidden unit did on the previous step,
@@ -68,7 +74,7 @@ export const INPUT_LABELS = [
   'mid',
   'far',
 ] as const;
-export const OUTPUT_LABELS = ['wheel A', 'wheel B'] as const;
+export const OUTPUT_LABELS = ['wheel A', 'wheel B', 'wheel C', 'wheel D'] as const;
 
 export interface Brain {
   /**

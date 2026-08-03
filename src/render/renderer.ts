@@ -20,7 +20,7 @@ import {
 export interface GhostFrame {
   def: CarDef;
   chassis: Pose;
-  wheels: [Pose, Pose];
+  wheels: readonly Pose[];
 }
 
 export class Renderer {

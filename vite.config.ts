@@ -5,7 +5,12 @@ export default defineConfig({
   // Relative base so the build works from any path (GitHub Pages project sites included).
   base: './',
   build: {
-    target: 'es2022',
+    // Safari 14, which is iOS 14. three.js ships class static blocks, which
+    // need iOS 16.4 to parse: on anything older the 3D chunk failed to load
+    // with a syntax error, and that is not a failure the app can recover from
+    // gracefully. Down-levelling costs a few bytes and buys two years of
+    // phones.
+    target: 'es2020',
     outDir: 'dist',
     sourcemap: true,
   },

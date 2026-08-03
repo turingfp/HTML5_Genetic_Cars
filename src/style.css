@@ -314,6 +314,7 @@ h3 {
   border-radius: var(--radius-sm);
   padding: 5px 10px;
   min-width: 76px;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -343,6 +344,7 @@ h3 {
   font-size: 0.85rem;
   color: var(--text);
   text-align: center;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -728,4 +730,42 @@ summary:hover h2 {
   * {
     transition: none !important;
   }
+}
+
+/* ── Fatal errors ───────────────────────────────────────────────────────── */
+
+/*
+ * Shown by main.ts when start-up throws. Deliberately plain: it has to render
+ * on a browser that has just proved it cannot run the rest of the page.
+ */
+.fatal {
+  display: block;
+  margin: 12px;
+  padding: 14px 16px;
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+  background: #1a0a0a;
+  color: #fecaca;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.fatal strong {
+  display: block;
+  color: #fca5a5;
+  margin-bottom: 4px;
+}
+
+.fatal span {
+  display: block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.fatal small {
+  display: block;
+  margin-top: 8px;
+  color: #f8b4b4;
+  opacity: 0.75;
 }

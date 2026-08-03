@@ -32,6 +32,7 @@ import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { CAMERA_SMOOTHING, PHYSICS_HZ } from '../config';
+import { detectQuality } from '../core/device';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
 import { lineageHex, lineageHue } from '../ga/lineage';
 import { wheelHalfTread } from '../sim3d/car3d';
@@ -81,6 +82,15 @@ export class Renderer3D {
   private readonly hubMaterial = new MeshBasicMaterial({ color: 0xcbd5e1 });
 
   private controls: OrbitControls;
+  /**
+   * Set when the browser takes the WebGL context away, which iOS does when it
+   * decides the tab is using too much memory. three.js keeps being told to
+   * draw and quietly does nothing, so the canvas freezes with no error
+   * anywhere. Someone has to notice, and it may as well be us.
+   */
+  contextLost = false;
+  /** Called when the context is lost or comes back, so the app can say so. */
+  onContextChange: ((lost: boolean) => void) | null = null;
   readonly graveyard = new Graveyard();
   readonly trails = new Trails();
 
@@ -91,10 +101,18 @@ export class Renderer3D {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.renderer = new WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const quality = detectQuality();
+    this.renderer = new WebGLRenderer({
+      canvas,
+      antialias: quality.antialias,
+      // A phone that cannot keep a context alive should get a slow scene
+      // rather than a dead one.
+      powerPreference: quality.lowPower ? 'default' : 'high-performance',
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.maxPixelRatio));
     // Shadows are what make the cars sit *on* the road rather than float above
-    // it; without them the scene reads flat however good the geometry is.
+    // it; without them the scene reads flat however good the geometry is. So
+    // they stay on everywhere, and a phone gets a smaller map instead of none.
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFSoftShadowMap;
     // Filmic tone mapping instead of clipping raw values: the bright sunlit
@@ -116,7 +134,7 @@ export class Renderer3D {
     this.sun = new DirectionalLight(0xfff2d5, 2.4);
     this.sun.position.set(-24, 40, 22);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
     // A tight ortho frustum that travels with the action keeps the shadow map's
     // texels small enough to resolve individual wheels.
     const shadow = this.sun.shadow.camera;
@@ -144,6 +162,18 @@ export class Renderer3D {
     // Stay above ground; looking up from underneath the road is disorienting.
     this.controls.maxPolarAngle = Math.PI * 0.49;
     this.camera.position.set(-8, 4.6, 9.5);
+
+    canvas.addEventListener('webglcontextlost', (event) => {
+      // Preventing the default is what makes the loss recoverable at all;
+      // without it the browser never offers the context back.
+      event.preventDefault();
+      this.contextLost = true;
+      this.onContextChange?.(true);
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      this.onContextChange?.(false);
+    });
 
     this.resize();
     if (typeof ResizeObserver !== 'undefined') {

@@ -25,6 +25,7 @@ import {
   TOP_SCORE_COUNT,
   type Speed,
 } from '../config';
+import { hasWebGL } from '../core/device';
 import { randomSeed } from '../core/rng';
 import type { CarScore, GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
@@ -63,6 +64,34 @@ function element<T extends HTMLElement>(id: string): T {
   return el as T;
 }
 
+/**
+ * How long the 3D engine gets to come up before we give up on it.
+ *
+ * Generous, because it is compiling half a megabyte of WebAssembly and a slow
+ * phone on a slow connection deserves the room. The point is not to be strict,
+ * it is that a hang has to end in something rather than nothing: without this
+ * a stalled instantiation leaves a dark canvas behind a "warming up" banner
+ * for as long as you care to wait.
+ */
+const LOAD_3D_TIMEOUT_MS = 25_000;
+
+/** The promise, or a rejection once the deadline passes. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
 export class App {
   private sim: Simulation;
   private loop: Loop;
@@ -77,6 +106,8 @@ export class App {
   private panel: Panel;
   private ghost = new Ghost();
   private banner: HTMLElement;
+  /** Why 3D last refused to start, if it did. */
+  private failure3d: string | null = null;
 
   private snapshot: WorldSnapshot = createSnapshot();
   /**
@@ -609,20 +640,36 @@ export class App {
     if (this.sim3d) return true;
     if (this.loading3d) return false;
 
+    // Ask before fetching. On a device with no WebGL the failure would
+    // otherwise happen inside three.js, after half a megabyte of it had
+    // already come down the wire.
+    if (!hasWebGL()) return false;
+
     this.loading3d = true;
     this.showBanner('Warming up the 3D physics engine.');
     try {
       // Box3D and three.js are only fetched for 3D, so the flat mode does not
       // have to carry them.
-      const [{ Simulation3D }, { Renderer3D }] = await Promise.all([
-        import('../sim3d/simulation3d'),
-        import('../render3d/renderer3d'),
-      ]);
-      this.sim3d = await Simulation3D.create({
-        trackSeed: this.sim.trackSeed,
-        params: { ...this.sim.params },
-      });
+      const [{ Simulation3D }, { Renderer3D }] = await withTimeout(
+        Promise.all([import('../sim3d/simulation3d'), import('../render3d/renderer3d')]),
+        LOAD_3D_TIMEOUT_MS,
+        'Loading the 3D engine timed out.',
+      );
+      this.sim3d = await withTimeout(
+        Simulation3D.create({
+          trackSeed: this.sim.trackSeed,
+          params: { ...this.sim.params },
+        }),
+        LOAD_3D_TIMEOUT_MS,
+        'Starting the 3D physics world timed out.',
+      );
       this.renderer3d = new Renderer3D(element<HTMLCanvasElement>('view3d'));
+      this.renderer3d.onContextChange = (lost) => {
+        // A lost context is a frozen picture, not a stopped simulation, so say
+        // what happened rather than letting it look like a hang.
+        if (lost) this.showBanner('The browser dropped the 3D view. Waiting for it to come back.');
+        else this.flashBanner('3D view is back.');
+      };
       this.sim3d.onCarDeath = (car) => {
         if (!car.deathPosition) return;
         this.renderer3d?.addDeath({
@@ -640,6 +687,9 @@ export class App {
       return true;
     } catch (error) {
       console.error(error);
+      // Kept so the fallback can say what actually happened rather than the
+      // generic "3D will not start", which tells nobody anything.
+      this.failure3d = error instanceof Error ? error.message : String(error);
       return false;
     } finally {
       this.loading3d = false;
@@ -660,8 +710,12 @@ export class App {
       await this.enter3D();
       return;
     }
-    this.flashBanner('3D will not start in this browser, so here is the flat mode.');
     await this.setMode('2d');
+    this.flashBanner(
+      this.failure3d
+        ? `3D did not start, so here is the flat mode. ${this.failure3d}`
+        : '3D will not start in this browser, so here is the flat mode.',
+    );
   }
 
   /**
@@ -673,7 +727,11 @@ export class App {
 
     if (mode === '3d') {
       if (!(await this.ensure3D())) {
-        this.flashBanner('Could not start 3D mode in this browser.');
+        this.flashBanner(
+          this.failure3d
+            ? `Could not start 3D mode. ${this.failure3d}`
+            : 'Could not start 3D mode in this browser.',
+        );
         return;
       }
       await this.enter3D();

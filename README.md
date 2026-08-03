@@ -17,13 +17,48 @@ Three things make it more than a screensaver:
 
 - **The track is a design, not a dice roll.** Length, hills, ramps, gaps,
   camber and road width, packed into a twenty character code. Paste someone
-  yours and they drive the same course, hole for hole.
+  yours and they drive the same course, hole for hole. Seven built-in tracks
+  come with it, each isolating a different problem.
 - **There is something to win.** Medals are fractions of the course, so gold
   means the same thing on a brutal track and a gentle one, and the author medal
   means a car actually finished. A genetic algorithm with no finish line is why
   watching one goes slack after five minutes.
 - **The search is shared.** Everyone on the same track code lands in the same
   room, and champions migrate between their populations over WebRTC. No server.
+
+## The tracks
+
+The original had one kind of terrain, which quietly limits what you can ask.
+You cannot find out whether a car built for hills also clears a gap, because
+there is no track that is all gaps. Six knobs fix that, and the seven built-in
+tracks are there because a list of things to try is a better opening than a
+blank set of sliders.
+
+| Track | What it asks |
+| ----- | ------------ |
+| First Light | Gentle and short. Almost anything with two wheels finishes. |
+| The Climb | The original course. No tricks, just ground that keeps getting worse. |
+| Leap Of Faith | Holes everywhere. Speed and a long wheelbase, or nothing. |
+| Launch Pad | Ramp after ramp. Cars that survive the landings win. |
+| Tightrope | Narrow and heavily cambered. Wide and low, or over the edge. |
+| The Long Haul | Six hundred tiles. Nothing here is hard; finishing it is. |
+| Everything At Once | Steep, gapped, ramped, narrow, banked. Probably unfinishable. |
+
+Put the same population on Leap Of Faith and on Tightrope and two completely
+different body plans win, which is the thing the single-terrain version could
+never show you.
+
+Gaps are real in both modes: no collider, no faces, a hole you fall into. A gap
+tile keeps its geometry so the surface polyline stays a function of x and every
+lookup that walks it still works, it simply has nothing to drive on. Ramps and
+gaps draw from a random stream of their own, so moving the hills slider changes
+the hills and leaves the features where they were.
+
+Codes are lossless by construction. The first attempt quantised each knob to a
+byte, and the test that caught it is the one that matters: whoever pastes your
+code has to get the track you were driving, not one that rounds to nearby. Knobs
+are stored as their slider step index instead, and specs are snapped to that
+grid on the way in, so there is no representable value a code cannot hold.
 
 ## Islands
 
@@ -392,6 +427,10 @@ The original single file version is preserved in this repository's git history.
 - **The interface** was rebuilt responsively with device pixel ratio aware
   canvases, replacing a fixed 800x400 layout positioned with absolute pixel
   offsets.
+- **Tracks are designed rather than seeded**, and shared as codes. The original
+  had one terrain shape and a random number.
+- **Populations can be connected**, so a search is no longer confined to the tab
+  it started in.
 - Dead Google Analytics, a PayPal form and an HTTP only widget were removed.
 
 Bugs fixed along the way: leader tracking aliased a live physics vector, and the

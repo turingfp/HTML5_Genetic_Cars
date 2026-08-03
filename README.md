@@ -4,7 +4,7 @@ Cars that evolve their shape and the little neural network that drives them, on
 Erin Catto's Box3D physics, in a browser tab. Design a track, share the code,
 and every browser driving it becomes an island in one distributed search.
 
-![Four wheeled cars evolving on a banked road](docs/screenshot-3d.png)
+![Cars jumping the gaps on Leap Of Faith, with the leader's driver network below](docs/screenshot-3d.png)
 
 Twenty random cars set off down a road that gets steeper, starts to bank, and
 has holes in it. A car scores by how far it gets, plus a bonus for average

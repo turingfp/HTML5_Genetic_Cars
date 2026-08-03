@@ -31,6 +31,7 @@ import {
 import { BRAIN_WEIGHT_COUNT } from '../ga/brain';
 import { rebuildVertices, type CarDef, type Spoke, type WheelDef } from '../ga/genome';
 import type { Car3DDef } from '../ga/genome3d';
+import { REPLAY3D_STRIDE as GHOST_STRIDE } from '../replay/recorder3d';
 
 /** Widest a network weight may be. Mutation clamps here too. */
 const WEIGHT_LIMIT = 1.5;
@@ -211,6 +212,93 @@ export interface ChampionMessage {
   score: number;
   generation: number;
   mode: '2d' | '3d';
+}
+
+/**
+ * Longest ghost anyone will send or accept, in recorded frames.
+ *
+ * At the 3D sampling rate this is a bit over two minutes of driving, which is
+ * longer than any generation runs, so in practice nothing is ever cut. It is
+ * here as a ceiling on what a stranger can make your tab allocate: without it
+ * a peer could announce a ten million frame ghost and the buffer check would
+ * happily agree with them.
+ */
+export const GHOST_MAX_WIRE_FRAMES = 4000;
+
+/**
+ * A shared ghost, minus the frames.
+ *
+ * The frames travel as raw bytes and this rides along as Trystero's binary
+ * metadata, because a Float32Array is not something to put through JSON: the
+ * same run that is a hundred kilobytes of buffer becomes most of a megabyte of
+ * decimal digits.
+ */
+export interface GhostMeta {
+  car: WireCar;
+  score: number;
+  generation: number;
+  /** Frames in the buffer, which the buffer's own length has to agree with. */
+  count: number;
+  mode: '2d' | '3d';
+}
+
+/** A shared ghost as it arrives, once both halves have been checked. */
+export interface GhostMessage {
+  meta: GhostMeta;
+  frames: Float32Array;
+}
+
+export function readGhostMeta(raw: unknown): GhostMeta | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const message = raw as Partial<GhostMeta>;
+  if (!isMode(message.mode)) return null;
+  if (!inRange(message.score, -1e6, 1e6)) return null;
+  if (!inRange(message.generation, 0, 1e7)) return null;
+  if (!inRange(message.count, 1, GHOST_MAX_WIRE_FRAMES)) return null;
+  if (!Number.isInteger(message.count)) return null;
+  if (!message.car || typeof message.car !== 'object') return null;
+  return {
+    car: message.car as WireCar,
+    score: message.score,
+    generation: Math.floor(message.generation),
+    count: message.count,
+    mode: message.mode,
+  };
+}
+
+/**
+ * Turn received bytes into frames, or null.
+ *
+ * Trystero hands binary back as an ArrayBuffer whatever went in, so the type
+ * on the way out says nothing about the type on the way in and every field
+ * still has to be looked at. A NaN here would not throw, it would put a ghost
+ * at an undrawable position and quietly break the scene.
+ */
+export function readGhostFrames(raw: unknown, count: number): Float32Array | null {
+  let bytes: ArrayBuffer | null = null;
+  if (raw instanceof ArrayBuffer) bytes = raw;
+  else if (ArrayBuffer.isView(raw)) {
+    bytes = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+  }
+  if (!bytes) return null;
+  if (bytes.byteLength !== count * GHOST_STRIDE * 4) return null;
+
+  const frames = new Float32Array(bytes);
+  for (let i = 0; i < frames.length; i += GHOST_STRIDE) {
+    for (let axis = 0; axis < 3; axis++) {
+      if (!inRange(frames[i + axis], -1e5, 1e5)) return null;
+    }
+    // A rotation that is not a unit quaternion is not a rotation, and three.js
+    // will scale the whole car by whatever length it happens to have.
+    let square = 0;
+    for (let part = 3; part < GHOST_STRIDE; part++) {
+      const value = frames[i + part];
+      if (!inRange(value, -1.01, 1.01)) return null;
+      square += value * value;
+    }
+    if (Math.abs(square - 1) > 0.05) return null;
+  }
+  return frames;
 }
 
 /** Longest peer name accepted, and what a rejected one becomes. */

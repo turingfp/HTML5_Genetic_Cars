@@ -78,6 +78,18 @@ export class Ghost3D {
     return true;
   }
 
+  /**
+   * The held run, if it is ours to give away.
+   *
+   * A ghost adopted from a peer is not offered on: whoever drove it is already
+   * telling the room about it, and passing it along would mean the same lap
+   * bouncing round the room with everyone's name on it in turn.
+   */
+  share(): Replay3D | null {
+    if (!this.replay || this.replay.who) return null;
+    return this.replay;
+  }
+
   /** Take a ghost whole, as one arrives from someone else. */
   adopt(replay: Replay3D): boolean {
     if (this.replay && replay.score <= this.replay.score) return false;

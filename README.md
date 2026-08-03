@@ -25,6 +25,8 @@ Three things make it more than a screensaver:
   watching one goes slack after five minutes.
 - **The search is shared.** Everyone on the same track code lands in the same
   room, and champions migrate between their populations over WebRTC. No server.
+- **There is a ghost to beat.** The fastest run on the track replays alongside
+  the living pack, and in a room it is whoever is actually fastest anywhere.
 
 ## The tracks
 
@@ -100,6 +102,29 @@ ten thousand wheels, a NaN spoke, two wheels on one corner or a chassis a
 kilometre wide costs you nothing. `tests/wire.test.ts` is nineteen tests of
 exactly that, running the messages through JSON first the way the transport
 does.
+
+Laps cross the room as well as cars. The best run in 3D is recorded and replays
+as a pale ghost driving beside the pack, and when a peer beats the track their
+lap arrives and takes over the ghost, so what you are racing is the best anyone
+in the room has managed rather than the best you have. That is the borrowed
+Trackmania idea and it is why the medal bar has something to push against: a
+chart says the number went up, a ghost is a line pulling away from you.
+
+The frames go over as raw bytes with the car alongside as metadata, because a
+Float32Array through JSON is most of a megabyte of decimal digits for what is a
+hundred kilobytes of buffer. Broadcasts are rate limited to one every twenty
+seconds, since early generations beat each other faster than a ghost can be
+useful, and a suppressed one goes out on the next sweep rather than being lost.
+An adopted ghost is never passed on: whoever drove it is already telling the
+room, and forwarding would put the same lap round the room under everyone's name
+in turn.
+
+Bytes are as untrusted as genomes. `tests/ghostwire.test.ts` sends a real
+recorded run between two real rooms and checks it arrives identical, then feeds
+the reader a buffer whose length disagrees with its header, a NaN pose, a
+position a thousand kilometres off the track, and a rotation that is inside the
+per-component range but is not a unit quaternion and would therefore have three
+scaled the whole car by its length. All of them are dropped.
 
 The migration seam is a function rather than a socket, so the island model is
 tested offline and deterministically: migrants land after the elites so they
@@ -439,7 +464,7 @@ src/
   net/             the wire format and its validation, and the peer room
   sim/             2D terrain, car construction, the world and its rules
   sim3d/           the same on Box3D, with a banked road and four wheels
-  replay/          compact pose recording and the ghost of the best run
+  replay/          compact pose recording and the ghosts, flat and 3D
   render/          camera, main view, minimap, fitness chart, driver panels
   render3d/        the three.js scene
   ui/              controls, readouts, hall of fame, persistence

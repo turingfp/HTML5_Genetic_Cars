@@ -29,7 +29,14 @@ import {
 } from '../config';
 import { hasWebGL } from '../core/device';
 import { Room, suggestName, type Peer } from '../net/room';
-import { packCar, packCar3D, unpackCar, unpackCar3D } from '../net/wire';
+import {
+  GHOST_MAX_WIRE_FRAMES,
+  packCar,
+  packCar3D,
+  unpackCar,
+  unpackCar3D,
+  type GhostMessage,
+} from '../net/wire';
 import {
   decodeSpec,
   defaultSpec,
@@ -694,7 +701,7 @@ export class App {
       this.panel.setReplaying(this.showGhost3d, '3d');
       this.flashBanner(
         this.showGhost3d
-          ? `Racing the best run so far: ${this.ghost3d.score.toFixed(1)}m from generation ${this.ghost3d.generation}.`
+          ? `Racing ${this.ghost3d.who || 'the best run so far'}: ${this.ghost3d.score.toFixed(1)}m.`
           : 'Ghost hidden.',
       );
       return;
@@ -844,12 +851,17 @@ export class App {
         {
           onChange: () => this.renderRoom(),
           onChampion: (peer) => this.onChampionArrived(peer),
+          onGhost: (peer, ghost) => this.onGhostArrived(peer, ghost),
           onTrouble: (reason) => this.roomPanel.setTrouble(reason),
         },
       );
       this.roomPanel.setStatus('online');
       this.renderRoom();
       this.attachMigrantSource();
+      this.room.setGhostSource(() => this.ghostOffer());
+      // Whatever this tab has already driven is worth sending: the room may
+      // have been joined ten generations in.
+      this.room.sendGhost();
     } catch (error) {
       this.room = null;
       this.roomPanel.setStatus(
@@ -891,6 +903,55 @@ export class App {
   private onChampionArrived(peer: Peer): void {
     if (this.sim.params.migrants <= 0) return;
     this.flashBanner(`A car arrived from ${peer.name}.`);
+  }
+
+  /**
+   * This tab's ghost, packed for anyone who asks.
+   *
+   * Trimmed to the wire limit rather than refused for being long, because a
+   * ghost that stops a little early still shows you the line, and a peer who
+   * gets nothing learns nothing.
+   */
+  private ghostOffer(): GhostMessage | null {
+    const replay = this.ghost3d.share();
+    if (!replay) return null;
+    const count = Math.min(replay.frameCount, GHOST_MAX_WIRE_FRAMES);
+    if (count === 0) return null;
+    return {
+      meta: {
+        car: packCar3D(replay.def),
+        score: replay.score,
+        generation: replay.generation,
+        count,
+        mode: '3d',
+      },
+      frames: replay.frames,
+    };
+  }
+
+  /**
+   * Someone else's lap, arriving to be raced.
+   *
+   * Held to exactly the same bar as our own: it replaces the ghost only if it
+   * went further. Otherwise the fastest car on the track would be whoever
+   * happened to send last.
+   */
+  private onGhostArrived(peer: Peer, ghost: GhostMessage): void {
+    if (ghost.meta.mode !== '3d') return;
+    const def = unpackCar3D(ghost.meta.car);
+    if (!def) return;
+    const adopted = this.ghost3d.adopt({
+      def,
+      frames: ghost.frames,
+      frameCount: ghost.meta.count,
+      score: ghost.meta.score,
+      generation: ghost.meta.generation,
+      who: peer.name,
+    });
+    if (!adopted) return;
+    this.syncGhostButton();
+    if (this.mode !== '3d') return;
+    this.flashBanner(`${peer.name} set a faster lap: ${ghost.meta.score.toFixed(1)}m. Racing it.`);
   }
 
   private renderRoom(): void {
@@ -957,8 +1018,15 @@ export class App {
       };
       this.sim3d.onCarDeath = (car) => {
         const recorder = this.sim3d?.recorders[this.sim3d.cars.indexOf(car)];
-        // A finished run becomes the ghost if it beat everything before it.
-        if (recorder) this.ghost3d.consider(recorder, car.def, car.score, this.sim3d!.generation);
+        // A finished run becomes the ghost if it beat everything before it,
+        // and a new best is worth telling the room about.
+        if (
+          recorder &&
+          this.ghost3d.consider(recorder, car.def, car.score, this.sim3d!.generation)
+        ) {
+          this.syncGhostButton();
+          this.room?.sendGhost();
+        }
         if (!car.deathPosition) return;
         this.renderer3d?.addDeath({
           // Along the course and across the road as it actually died, but

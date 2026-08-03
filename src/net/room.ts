@@ -18,20 +18,25 @@
  * opened a page.
  */
 
+import { REPLAY3D_STRIDE as GHOST_STRIDE } from '../replay/recorder3d';
 import { medalFor, type MedalName } from '../track/spec';
 import {
   cleanName,
   readChampion,
+  readGhostFrames,
+  readGhostMeta,
   readHello,
   readScore,
   type ChampionMessage,
+  type GhostMessage,
+  type GhostMeta,
   type HelloMessage,
   type ScoreMessage,
   type WireCar,
 } from './wire';
 
 /** Namespaces the room sends on. Trystero caps these at twelve bytes. */
-const ACTIONS = { hello: 'hi', score: 'score', champion: 'champ' } as const;
+const ACTIONS = { hello: 'hi', score: 'score', champion: 'champ', ghost: 'ghost' } as const;
 
 /** Identifies this application to the relays, so rooms cannot collide. */
 const APP_ID = 'boxcar3d-v1';
@@ -44,6 +49,15 @@ const APP_ID = 'boxcar3d-v1';
  * than one that is a minute out of date.
  */
 const PEER_TIMEOUT_MS = 90_000;
+
+/**
+ * Shortest gap between broadcasting this tab's ghost.
+ *
+ * Long enough that a burst of quick early generations costs one send, short
+ * enough that a genuinely better lap is racing on everyone else's screen while
+ * it still feels like news.
+ */
+const GHOST_BROADCAST_INTERVAL_MS = 20_000;
 
 /** How long to give the relays before deciding none of them will answer. */
 const RELAY_CHECK_INTERVAL_MS = 4000;
@@ -76,6 +90,8 @@ export interface RoomEvents {
   onChange: () => void;
   /** A champion arrived from `peer`. */
   onChampion?: (peer: Peer) => void;
+  /** Someone's recorded run arrived, to race against. */
+  onGhost?: (peer: Peer, ghost: GhostMessage) => void;
   /** The relays reported a problem. The room may still work through others. */
   onTrouble?: (reason: string) => void;
 }
@@ -86,13 +102,16 @@ export interface RoomEvents {
  * Importing its types at the top would pull the module into the main bundle,
  * which defeats the point of only fetching it when someone joins.
  */
-interface MessageAction<T> {
-  send: (data: T, options?: { target?: string | string[] | null }) => Promise<void>;
-  onMessage: ((data: T, context: { peerId: string }) => void) | null;
+interface MessageAction<T, M = never> {
+  send: (
+    data: T,
+    options?: { target?: string | string[] | null; metadata?: M },
+  ) => Promise<void>;
+  onMessage: ((data: T, context: { peerId: string; metadata?: unknown }) => void) | null;
 }
 
 interface TrysteroRoom {
-  makeAction: <T>(namespace: string) => MessageAction<T>;
+  makeAction: <T, M = never>(namespace: string) => MessageAction<T, M>;
   onPeerJoin: ((peerId: string) => void) | null;
   onPeerLeave: ((peerId: string) => void) | null;
   leave: () => Promise<void> | void;
@@ -105,8 +124,14 @@ interface TrysteroRoom {
  * drawn and the message going out, which happens routinely and means nothing:
  * that peer is gone and the sweep will notice.
  */
-function fireAndForget<T>(action: MessageAction<T> | null, data: T, target?: string): void {
-  void action?.send(data, target ? { target } : undefined).catch(() => undefined);
+function fireAndForget<T, M>(
+  action: MessageAction<T, M> | null,
+  data: T,
+  target?: string,
+  metadata?: M,
+): void {
+  const options = target || metadata !== undefined ? { target, metadata } : undefined;
+  void action?.send(data, options).catch(() => undefined);
 }
 
 /**
@@ -125,7 +150,12 @@ export class Room {
   private hello: MessageAction<HelloMessage> | null = null;
   private score: MessageAction<ScoreMessage> | null = null;
   private champion: MessageAction<ChampionMessage> | null = null;
+  private ghost: MessageAction<ArrayBufferLike, GhostMeta> | null = null;
   private sweeper: ReturnType<typeof setInterval> | null = null;
+
+  private ghostSource: (() => GhostMessage | null) | null = null;
+  private lastGhostSent = 0;
+  private ghostPending = false;
 
   /** The code this room belongs to, so a track change can be detected. */
   readonly code: string;
@@ -170,16 +200,22 @@ export class Room {
     instance.hello = room.makeAction<HelloMessage>(ACTIONS.hello);
     instance.score = room.makeAction<ScoreMessage>(ACTIONS.score);
     instance.champion = room.makeAction<ChampionMessage>(ACTIONS.champion);
+    instance.ghost = room.makeAction<ArrayBufferLike, GhostMeta>(ACTIONS.ghost);
 
     instance.hello.onMessage = (raw, ctx) => instance.receiveHello(raw, ctx.peerId);
     instance.score.onMessage = (raw, ctx) => instance.receiveScore(raw, ctx.peerId);
     instance.champion.onMessage = (raw, ctx) => instance.receiveChampion(raw, ctx.peerId);
+    instance.ghost.onMessage = (raw, ctx) =>
+      instance.receiveGhost(raw, ctx.peerId, ctx.metadata);
 
     room.onPeerJoin = (peerId) => {
       // Introduce ourselves to the newcomer specifically rather than shouting
       // at everyone again.
       instance.touch(peerId);
       fireAndForget(instance.hello, instance.self, peerId);
+      // Hand the newcomer our ghost straight away. Arriving to an empty track
+      // and arriving to someone's lap already running are different rooms.
+      instance.sendGhost(peerId);
       instance.events.onChange();
     };
     room.onPeerLeave = (peerId) => {
@@ -246,6 +282,45 @@ export class Room {
     fireAndForget(this.champion, { car, score, generation, mode: this.self.mode });
   }
 
+  /**
+   * Where to find this tab's ghost when there is someone to send it to.
+   *
+   * A callback rather than a stored copy, because the ghost changes every time
+   * a generation beats the last one and the room should not be holding a stale
+   * hundred kilobytes waiting for someone to join.
+   */
+  setGhostSource(source: (() => GhostMessage | null) | null): void {
+    this.ghostSource = source;
+  }
+
+  /**
+   * Send the current ghost to one peer, or to the whole room.
+   *
+   * Broadcasts are rate limited because a ghost is a hundred kilobytes and
+   * early generations beat each other every few seconds: without this a room
+   * of six spends its bandwidth on laps that are obsolete before they arrive.
+   * A suppressed one is not dropped, it goes out on the next sweep. Sends
+   * aimed at a single peer skip the limit, since those are someone arriving
+   * and they only happen once each.
+   */
+  sendGhost(target?: string): void {
+    if (!target) {
+      const now = Date.now();
+      if (now - this.lastGhostSent < GHOST_BROADCAST_INTERVAL_MS) {
+        this.ghostPending = true;
+        return;
+      }
+      this.lastGhostSent = now;
+      this.ghostPending = false;
+    }
+    const offer = this.ghostSource?.();
+    if (!offer || offer.meta.count === 0) return;
+    // Trystero chunks this for us, and the copy is because a Float32Array's
+    // buffer may be larger than the view when it came out of a recorder.
+    const bytes = offer.frames.slice(0, offer.meta.count * GHOST_STRIDE).buffer;
+    fireAndForget(this.ghost, bytes, target, offer.meta);
+  }
+
   /** Say who we are again, after a rename or a mode switch. */
   setSelf(self: SelfState): void {
     this.self = self;
@@ -290,6 +365,8 @@ export class Room {
     this.hello = null;
     this.score = null;
     this.champion = null;
+    this.ghost = null;
+    this.ghostSource = null;
     try {
       await room?.leave();
     } catch {
@@ -352,8 +429,18 @@ export class Room {
     this.events.onChampion?.(peer);
   }
 
+  private receiveGhost(raw: unknown, peerId: string, rawMeta: unknown): void {
+    const meta = readGhostMeta(rawMeta);
+    if (!meta) return;
+    const frames = readGhostFrames(raw, meta.count);
+    if (!frames) return;
+    const peer = this.touch(peerId);
+    this.events.onGhost?.(peer, { meta, frames });
+  }
+
   /** Drop peers that have gone quiet without saying goodbye. */
   private sweep(): void {
+    if (this.ghostPending) this.sendGhost();
     const cutoff = Date.now() - PEER_TIMEOUT_MS;
     let dropped = false;
     for (const [id, peer] of this.known) {

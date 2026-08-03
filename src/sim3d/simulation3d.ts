@@ -7,7 +7,9 @@
  */
 
 import {
+  DEFAULT_DIVERSITY_PRESSURE,
   DEFAULT_ELITE_COUNT,
+  DEFAULT_IMMIGRANTS,
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
@@ -23,6 +25,10 @@ import {
 } from '../config';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import {
+  DEFAULT_CROSSOVER,
+  DEFAULT_GOAL,
+  DEFAULT_SELECTION,
+  fitnessOf,
   nextGeneration,
   randomPopulation,
   type CarEntry,
@@ -66,6 +72,9 @@ export class Simulation3D {
   /** Frame at which the furthest point reached last moved meaningfully. */
   private lastProgressFrame = 0;
 
+  /** Next unused founding line number, so lineages stay unique across a run. */
+  private nextLineage = 0;
+
   /** Reused terrain lookahead, so stepping allocates nothing. */
   private readonly probes: SlopeProbes = { near: 0, mid: 0, far: 0 };
 
@@ -92,6 +101,11 @@ export class Simulation3D {
       mutationRate: DEFAULT_MUTATION_RATE,
       mutationSize: DEFAULT_MUTATION_SIZE,
       eliteCount: DEFAULT_ELITE_COUNT,
+      selection: DEFAULT_SELECTION,
+      crossoverMode: DEFAULT_CROSSOVER,
+      goal: DEFAULT_GOAL,
+      diversityPressure: DEFAULT_DIVERSITY_PRESSURE,
+      immigrants: DEFAULT_IMMIGRANTS,
       ...options.params,
     };
 
@@ -162,7 +176,8 @@ export class Simulation3D {
   }
 
   private spawn(entries: CarEntry<Car3DDef>[]): void {
-    this.cars = entries.map((e) => new Car3D(this.world, e.def, e.index, e.isElite));
+    this.cars = entries.map((e) => new Car3D(this.world, e.def, e.index, e.isElite, e.lineage));
+    this.nextLineage = Math.max(this.nextLineage, ...entries.map((e) => e.lineage + 1));
     this.aliveCount = this.cars.length;
     this.scores = [];
     this.frame = 0;
@@ -215,16 +230,25 @@ export class Simulation3D {
     // the surface, and a marker floating in the void says less than one sitting
     // where along the course it came to grief.
     car.deathRoadY = this.roadHeightAt(car.maxX);
+    const run = {
+      distance: car.maxX,
+      avgSpeed: car.avgSpeed,
+      maxY: car.maxY,
+      minY: car.minY,
+      mass: car.mass,
+    };
     car.destroy();
     this.aliveCount--;
     this.scores.push({
       def: car.def,
-      score: car.score,
-      avgSpeed: car.avgSpeed,
-      distance: car.maxX,
-      maxY: car.maxY,
-      minY: car.minY,
+      score: fitnessOf(run, this.params.goal),
+      avgSpeed: run.avgSpeed,
+      distance: run.distance,
+      maxY: run.maxY,
+      minY: run.minY,
+      mass: run.mass,
       isElite: car.isElite,
+      lineage: car.lineage,
     });
     this.onCarDeath?.(car);
   }
@@ -233,12 +257,13 @@ export class Simulation3D {
     const finished = this.scores;
     this.onGenerationEnd?.(finished, this.generation);
     this.generation++;
-    this.spawn(nextGeneration(finished, this.params, this.rng, car3DOps));
+    this.spawn(nextGeneration(finished, this.params, this.rng, car3DOps, this.nextLineage));
   }
 
   resetPopulation(): void {
     this.clearCars();
     this.generation = 0;
+    this.nextLineage = 0;
     this.spawn(randomPopulation(this.rng, this.params.populationSize, car3DOps));
   }
 
@@ -247,6 +272,7 @@ export class Simulation3D {
     this.track = generateTrack3D(seed);
     this.buildRoad();
     this.generation = 0;
+    this.nextLineage = 0;
     this.spawn(randomPopulation(this.rng, this.params.populationSize, car3DOps));
   }
 
@@ -277,6 +303,7 @@ export class Simulation3D {
         maxX: 0,
         activations: emptyActivations(),
         memory: emptyMemory(),
+        lineage: 0,
       });
     }
     out.cars.length = this.cars.length;
@@ -296,6 +323,7 @@ export class Simulation3D {
       snap.def = car.def;
       snap.isElite = car.isElite;
       snap.alive = car.alive;
+      snap.lineage = car.lineage;
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;
       snap.maxX = car.maxX;
       snap.activations.set(car.brain.activations);

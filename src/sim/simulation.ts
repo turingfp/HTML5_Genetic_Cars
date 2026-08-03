@@ -10,7 +10,9 @@
 import { Box, Vec2, World, type Body } from 'planck';
 
 import {
+  DEFAULT_DIVERSITY_PRESSURE,
   DEFAULT_ELITE_COUNT,
+  DEFAULT_IMMIGRANTS,
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
@@ -27,7 +29,17 @@ import {
   VELOCITY_ITERATIONS,
 } from '../config';
 import { BRAIN_NODE_COUNT, BRAIN_RECURRENT } from '../ga/brain';
-import { nextGeneration, randomPopulation, type CarEntry, type CarScore, type GAParams } from '../ga/evolution';
+import {
+  DEFAULT_CROSSOVER,
+  DEFAULT_GOAL,
+  DEFAULT_SELECTION,
+  fitnessOf,
+  nextGeneration,
+  randomPopulation,
+  type CarEntry,
+  type CarScore,
+  type GAParams,
+} from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import { ReplayRecorder, type Pose } from '../replay/recorder';
@@ -49,6 +61,8 @@ export interface CarSnapshot {
   activations: Float32Array;
   /** What its hidden layer is carrying into the next step. */
   memory: Float32Array;
+  /** Which founding line this car descends from. */
+  lineage: number;
 }
 
 export interface WorldSnapshot {
@@ -105,6 +119,9 @@ export class Simulation {
   /** Reused terrain lookahead, so stepping allocates nothing. */
   private readonly probes: SlopeProbes = { near: 0, mid: 0, far: 0 };
 
+  /** Next unused founding line number, so lineages stay unique across a run. */
+  private nextLineage = 0;
+
   /** Scratch poses handed to the recorders, so recording allocates nothing. */
   private readonly chassisPose: Pose = { x: 0, y: 0, angle: 0 };
   private readonly posePool: Pose[] = [];
@@ -128,6 +145,11 @@ export class Simulation {
       mutationRate: DEFAULT_MUTATION_RATE,
       mutationSize: DEFAULT_MUTATION_SIZE,
       eliteCount: DEFAULT_ELITE_COUNT,
+      selection: DEFAULT_SELECTION,
+      crossoverMode: DEFAULT_CROSSOVER,
+      goal: DEFAULT_GOAL,
+      diversityPressure: DEFAULT_DIVERSITY_PRESSURE,
+      immigrants: DEFAULT_IMMIGRANTS,
       ...options.params,
     };
 
@@ -162,7 +184,8 @@ export class Simulation {
   }
 
   private spawn(entries: CarEntry[]): void {
-    this.cars = entries.map((e) => new Car(this.world, e.def, e.index, e.isElite));
+    this.cars = entries.map((e) => new Car(this.world, e.def, e.index, e.isElite, e.lineage));
+    this.nextLineage = Math.max(this.nextLineage, ...entries.map((e) => e.lineage + 1));
     this.recorders = this.cars.map((car) => new ReplayRecorder(car.def.wheels.length));
     this.aliveCount = this.cars.length;
     this.scores = [];
@@ -240,16 +263,27 @@ export class Simulation {
   }
 
   private killCar(car: Car): void {
+    const run = {
+      distance: car.maxX,
+      avgSpeed: car.avgSpeed,
+      maxY: car.maxY,
+      minY: car.minY,
+      mass: car.mass,
+    };
     car.destroy(this.world);
     this.aliveCount--;
     this.scores.push({
       def: car.def,
-      score: car.score,
-      avgSpeed: car.avgSpeed,
-      distance: car.maxX,
-      maxY: car.maxY,
-      minY: car.minY,
+      // Fitness is applied here rather than inside the car, so changing the
+      // goal changes what wins without the physics knowing anything about it.
+      score: fitnessOf(run, this.params.goal),
+      avgSpeed: run.avgSpeed,
+      distance: run.distance,
+      maxY: run.maxY,
+      minY: run.minY,
+      mass: run.mass,
       isElite: car.isElite,
+      lineage: car.lineage,
     });
     this.onCarDeath?.(car);
   }
@@ -258,13 +292,14 @@ export class Simulation {
     const finished = this.scores;
     this.onGenerationEnd?.(finished, this.generation);
     this.generation++;
-    this.spawn(nextGeneration(finished, this.params, this.rng));
+    this.spawn(nextGeneration(finished, this.params, this.rng, undefined, this.nextLineage));
   }
 
   /** Start over with a fresh random population on the same track. */
   resetPopulation(): void {
     this.clearCars();
     this.generation = 0;
+    this.nextLineage = 0;
     this.spawn(randomPopulation(this.rng, this.params.populationSize));
   }
 
@@ -274,6 +309,7 @@ export class Simulation {
     this.track = generateTrack(seed);
     this.buildTrackBodies();
     this.generation = 0;
+    this.nextLineage = 0;
     this.spawn(randomPopulation(this.rng, this.params.populationSize));
   }
 
@@ -299,6 +335,7 @@ export class Simulation {
         maxX: 0,
         activations: new Float32Array(BRAIN_NODE_COUNT),
         memory: new Float32Array(BRAIN_RECURRENT),
+        lineage: 0,
       });
     }
     out.cars.length = this.cars.length;
@@ -319,6 +356,7 @@ export class Simulation {
       snap.def = car.def;
       snap.isElite = car.isElite;
       snap.alive = car.alive;
+      snap.lineage = car.lineage;
       snap.health01 = Math.max(0, car.health) / MAX_CAR_HEALTH;
       snap.maxX = car.maxX;
       snap.activations.set(car.brain.activations);

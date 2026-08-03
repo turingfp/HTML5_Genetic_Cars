@@ -15,7 +15,21 @@ import {
 } from '../src/config';
 import { mulberry32, rngFromSeed } from '../src/core/rng';
 import { cloneCar, crossover, mutate, randomCar, type CarDef } from '../src/ga/genome';
-import { nextGeneration, pickParentIndex, sortByScore, type CarScore } from '../src/ga/evolution';
+import {
+  DEFAULT_CROSSOVER,
+  DEFAULT_GOAL,
+  DEFAULT_SELECTION,
+  carOps,
+  countLineages,
+  fitnessOf,
+  nextGeneration,
+  pickParent,
+  pickParentIndex,
+  sharedFitness,
+  sortByScore,
+  type CarScore,
+  type GAParams,
+} from '../src/ga/evolution';
 
 const EPS = 1e-9;
 
@@ -309,6 +323,22 @@ describe('selection', () => {
   });
 });
 
+/** Base parameters, so each test only states the knob it cares about. */
+function params(over: Partial<GAParams> = {}): GAParams {
+  return {
+    populationSize: 20,
+    mutationRate: 0.05,
+    mutationSize: 1,
+    eliteCount: 1,
+    selection: DEFAULT_SELECTION,
+    crossoverMode: DEFAULT_CROSSOVER,
+    goal: DEFAULT_GOAL,
+    diversityPressure: 0,
+    immigrants: 0,
+    ...over,
+  };
+}
+
 describe('nextGeneration', () => {
   const makeScores = (rng: () => number, n: number): CarScore[] =>
     Array.from({ length: n }, (_, i) => ({
@@ -318,19 +348,16 @@ describe('nextGeneration', () => {
       distance: i,
       maxY: 0,
       minY: 0,
+      mass: 100,
       isElite: false,
+      lineage: i,
     }));
 
   it('carries the best cars through as elites, by value', () => {
     const rng = rngFromSeed('elites');
     const scores = makeScores(rng, 20);
     const best = sortByScore(scores)[0]!;
-    const gen = nextGeneration(scores, {
-      populationSize: 20,
-      mutationRate: 0.05,
-      mutationSize: 1,
-      eliteCount: 3,
-    }, rng);
+    const gen = nextGeneration(scores, params({ eliteCount: 3 }), rng);
 
     expect(gen).toHaveLength(20);
     expect(gen.filter((e) => e.isElite)).toHaveLength(3);
@@ -344,12 +371,11 @@ describe('nextGeneration', () => {
     const rng = rngFromSeed('gen');
     let scores = makeScores(rng, 20);
     for (let g = 0; g < 25; g++) {
-      const gen = nextGeneration(scores, {
-        populationSize: 16,
-        mutationRate: 0.2,
-        mutationSize: 0.6,
-        eliteCount: 2,
-      }, rng);
+      const gen = nextGeneration(
+        scores,
+        params({ populationSize: 16, mutationRate: 0.2, mutationSize: 0.6, eliteCount: 2 }),
+        rng,
+      );
       expect(gen).toHaveLength(16);
       gen.forEach((entry, i) => {
         expect(entry.index).toBe(i);
@@ -362,20 +388,221 @@ describe('nextGeneration', () => {
         distance: i,
         maxY: 0,
         minY: 0,
+        mass: 100,
         isElite: e.isElite,
+        lineage: e.lineage,
       }));
     }
   });
 
   it('clamps elite count to the population', () => {
     const rng = rngFromSeed('clamp');
-    const gen = nextGeneration(makeScores(rng, 20), {
-      populationSize: 5,
-      mutationRate: 0.05,
-      mutationSize: 1,
-      eliteCount: 10,
-    }, rng);
+    const gen = nextGeneration(
+      makeScores(rng, 20),
+      params({ populationSize: 5, eliteCount: 10 }),
+      rng,
+    );
     expect(gen).toHaveLength(5);
     expect(gen.every((e) => e.isElite)).toBe(true);
+  });
+
+  it('fills the population even when a setting is missing', () => {
+    // Params arrive from persisted settings, so a key added after someone last
+    // opened the page shows up undefined. That used to become NaN and hand back
+    // a generation containing only its elites.
+    const rng = rngFromSeed('stale');
+    const stale = { populationSize: 20, mutationRate: 0.05, mutationSize: 1, eliteCount: 1 };
+    const gen = nextGeneration(makeScores(rng, 20), stale as GAParams, rng);
+    expect(gen).toHaveLength(20);
+    gen.forEach((entry) => expectValidCar(entry.def));
+  });
+
+  it('adds the requested number of newcomers', () => {
+    const rng = rngFromSeed('immigrants');
+    const scores = makeScores(rng, 20);
+    const gen = nextGeneration(scores, params({ eliteCount: 2, immigrants: 5 }), rng, carOps, 1000);
+    expect(gen).toHaveLength(20);
+    // Newcomers found their own lines, numbered from where the caller said.
+    const fresh = gen.filter((e) => e.lineage >= 1000);
+    expect(fresh.length).toBeGreaterThanOrEqual(5);
+    // And they take the last slots, so they never displace an elite.
+    expect(gen.slice(-5).every((e) => e.lineage >= 1000)).toBe(true);
+    expect(gen.filter((e) => e.isElite)).toHaveLength(2);
+  });
+
+  it('passes elite lines on to their children', () => {
+    const rng = rngFromSeed('lines');
+    const scores = makeScores(rng, 20);
+    const gen = nextGeneration(scores, params({ eliteCount: 2 }), rng);
+    const known = new Set(scores.map((s) => s.lineage));
+    // Nobody invents a new line unless they are an immigrant, and there are
+    // none here, so every car descends from someone who ran.
+    for (const entry of gen) expect(known.has(entry.lineage)).toBe(true);
+    expect(countLineages(scores)).toBe(20);
+  });
+});
+
+describe('fitness goals', () => {
+  const run = { distance: 50, avgSpeed: 4, maxY: 9, minY: -1, mass: 300 };
+
+  it('scores the same run differently under each goal', () => {
+    const scores = (['distance', 'speed', 'airtime', 'efficiency'] as const).map((g) =>
+      fitnessOf(run, g),
+    );
+    expect(new Set(scores).size).toBe(4);
+    expect(fitnessOf(run, 'distance')).toBe(50);
+    expect(fitnessOf(run, 'speed')).toBe(54);
+    // Ten metres of vertical range is worth a lot to a jumper.
+    expect(fitnessOf(run, 'airtime')).toBe(50 + 60);
+    // Twice the mass for the same distance is worth half as much.
+    expect(fitnessOf({ ...run, mass: 600 }, 'efficiency')).toBeCloseTo(
+      fitnessOf(run, 'efficiency') / 2,
+      6,
+    );
+  });
+
+  it('never divides by zero for a weightless car', () => {
+    expect(Number.isFinite(fitnessOf({ ...run, mass: 0 }, 'efficiency'))).toBe(true);
+  });
+});
+
+describe('selection methods', () => {
+  const weights = Array.from({ length: 20 }, (_, i) => 20 - i);
+
+  it('keeps every method inside the population', () => {
+    const rng = rngFromSeed('methods');
+    for (const method of ['rank', 'tournament', 'roulette'] as const) {
+      for (let i = 0; i < 5000; i++) {
+        const idx = pickParent(rng, method, 20, weights);
+        expect(Number.isInteger(idx)).toBe(true);
+        expect(idx).toBeGreaterThanOrEqual(0);
+        expect(idx).toBeLessThan(20);
+      }
+    }
+  });
+
+  it('ranks the three methods by how greedy they actually are', () => {
+    // Worth pinning down, and worth measuring rather than assuming. The obvious
+    // guess is that exponential rank selection is the greedy one, since it is
+    // named after the ranking. It is not: with twenty cars it picks a top five
+    // parent about a third of the time, where a tournament of three does so
+    // well over half the time. Selecting the best of three random draws is a
+    // harsher filter than an exponential over the whole field.
+    const rng = rngFromSeed('greed');
+    const share = (method: 'rank' | 'tournament' | 'roulette') => {
+      let top = 0;
+      const N = 30_000;
+      for (let i = 0; i < N; i++) {
+        if (pickParent(rng, method, 20, weights) < 5) top++;
+      }
+      return top / N;
+    };
+    const rank = share('rank');
+    const tournament = share('tournament');
+    const roulette = share('roulette');
+
+    expect(tournament).toBeGreaterThan(roulette);
+    expect(roulette).toBeGreaterThan(rank);
+    // All three still beat picking a parent at random, which would be 5 in 20.
+    expect(rank).toBeGreaterThan(5 / 20);
+    // A tournament of three has a closed form: the chance that at least one of
+    // three uniform draws lands in the top quarter.
+    expect(tournament).toBeCloseTo(1 - Math.pow(15 / 20, 3), 2);
+  });
+});
+
+describe('diversity pressure', () => {
+  it('does nothing at zero', () => {
+    const rng = rngFromSeed('nopressure');
+    const scores = Array.from({ length: 10 }, (_, i) => ({
+      def: randomCar(rng),
+      score: 100 - i,
+      avgSpeed: 1,
+      distance: 1,
+      maxY: 0,
+      minY: 0,
+      mass: 100,
+      isElite: false,
+      lineage: i,
+    }));
+    expect(sharedFitness(scores, 0, carOps)).toEqual(scores.map((s) => s.score));
+  });
+
+  it('penalises a car surrounded by copies of itself', () => {
+    const rng = rngFromSeed('crowd');
+    const common = randomCar(rng);
+    const odd = randomCar(rng);
+    const score = (def: typeof common, lineage: number) => ({
+      def,
+      score: 100,
+      avgSpeed: 1,
+      distance: 1,
+      maxY: 0,
+      minY: 0,
+      mass: 100,
+      isElite: false,
+      lineage,
+    });
+
+    // Nine identical cars and one different one, all scoring the same.
+    const ranked = [
+      ...Array.from({ length: 9 }, (_, i) => score(cloneCar(common), i)),
+      score(odd, 9),
+    ];
+    const shared = sharedFitness(ranked, 1, carOps);
+
+    // The loner keeps far more of its fitness than any member of the crowd.
+    expect(shared[9]!).toBeGreaterThan(shared[0]! * 3);
+    // And nothing goes negative, since roulette uses these as weights.
+    for (const v of shared) expect(v).toBeGreaterThanOrEqual(0);
+  });
+
+  it('calls a car identical to itself zero distance away', () => {
+    const rng = rngFromSeed('selfsame');
+    const def = randomCar(rng);
+    expect(carOps.distance(def, cloneCar(def))).toBe(0);
+    expect(carOps.distance(def, randomCar(rng))).toBeGreaterThan(0);
+  });
+});
+
+describe('crossover modes', () => {
+  it('clones one parent whole when asexual', () => {
+    const rng = rngFromSeed('asexual');
+    for (let i = 0; i < 50; i++) {
+      const a = randomCar(rng);
+      const b = randomCar(rng);
+      const child = crossover(rng, a, b, 'none');
+      const matches = (p: CarDef) =>
+        p.spokes.every(
+          (s, k) =>
+            s.length === child.spokes[k]!.length && s.angle === child.spokes[k]!.angle,
+        );
+      expect(matches(a) || matches(b)).toBe(true);
+    }
+  });
+
+  it('mixes harder when uniform', () => {
+    // Two point inherits runs of neighbouring corners, so it changes parent at
+    // most twice. Uniform can change at every corner.
+    const rng = rngFromSeed('uniform');
+    const a = randomCar(rng);
+    const b = randomCar(rng);
+    let twoPointSwitches = 0;
+    let uniformSwitches = 0;
+    const switches = (child: CarDef) => {
+      let count = 0;
+      let previous: number | null = null;
+      for (let k = 0; k < child.spokes.length; k++) {
+        const from = child.spokes[k]!.length === a.spokes[k]!.length ? 0 : 1;
+        if (previous !== null && from !== previous) count++;
+        previous = from;
+      }
+      return count;
+    };
+    for (let i = 0; i < 200; i++) {
+      twoPointSwitches += switches(crossover(rng, a, b, 'two-point'));
+      uniformSwitches += switches(crossover(rng, a, b, 'uniform'));
+    }
+    expect(uniformSwitches).toBeGreaterThan(twoPointSwitches);
   });
 });

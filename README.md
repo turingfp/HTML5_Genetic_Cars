@@ -127,6 +127,33 @@ Three things are genes here that were constants there:
 - **Chassis density.** Where the mass sits relative to the wheels is now
   something evolution can choose.
 
+## Knobs
+
+Everything under **Selection** in the sidebar changes the character of a run,
+and most of it changes it more than any single gene does.
+
+| Control | What it does |
+| ------- | ------------ |
+| Selected for | Distance, distance and speed, air time, or distance per kilo. Air time breeds jumpers; distance per kilo breeds flimsy things that would fall apart under any other rule. |
+| Parents chosen by | Rank, tournament of three, or roulette. |
+| Breeding | Two point, uniform, or asexual. Asexual turns the whole thing into a mutation-only search, which is worth watching next to the others. |
+| Diversity pressure | Divides a car's fitness by how crowded its corner of the search space is. |
+| Fresh blood | Random newcomers each generation, replacing the worst children. |
+
+**Colour by family** under View gives every car the colour of the line it
+descends from. With diversity pressure at zero you can watch one family take
+the whole screen within a dozen generations. Turn the pressure up and several
+hold on, which is the whole point of it.
+
+A note on the selection methods, because the obvious guess is wrong. Exponential
+rank selection sounds like the greedy one, and it is in fact the gentlest of the
+three: with twenty cars it picks a top five parent about a third of the time. A
+tournament of three does so more than half the time, because taking the best of
+three random draws is a harsher filter than an exponential spread over the whole
+field. Roulette sits between them right up until one car runs away with the
+scores, and then it collapses very fast. `tests/ga.test.ts` measures all three
+and pins the ordering.
+
 ## Does any of it actually drive further?
 
 This is worth measuring rather than assuming, and the answer is interesting: the

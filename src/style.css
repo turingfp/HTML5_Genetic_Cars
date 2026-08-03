@@ -461,6 +461,22 @@ input[type="range"] {
   cursor: pointer;
 }
 
+select {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.84rem;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+select:hover {
+  border-color: var(--accent);
+}
+
 input[type="text"] {
   width: 100%;
   min-width: 0;

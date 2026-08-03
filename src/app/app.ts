@@ -12,7 +12,11 @@ import {
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
+  DEFAULT_DIVERSITY_PRESSURE,
+  DEFAULT_IMMIGRANTS,
+  MAX_DIVERSITY_PRESSURE,
   MAX_ELITE_COUNT,
+  MAX_IMMIGRANTS,
   MAX_POPULATION_SIZE,
   MIN_POPULATION_SIZE,
   PHYSICS_HZ,
@@ -34,7 +38,7 @@ import { Ghost } from '../replay/ghost';
 import { Simulation, createSnapshot, type WorldSnapshot } from '../sim/simulation';
 import { Leaderboard } from '../ui/leaderboard';
 import { Panel } from '../ui/panel';
-import { HealthStrip, Readouts } from '../ui/stats';
+import { HealthStrip, Readouts, countLiving } from '../ui/stats';
 import {
   loadHallOfFame,
   loadSettings,
@@ -97,6 +101,9 @@ export class App {
   private snapshot3d: World3DSnapshot = createSnapshot3D();
   private loading3d = false;
 
+  /** Colour cars by the family they descend from rather than by status. */
+  private colourByLineage = false;
+
   /** -1 follows whoever is in front; otherwise the index of a chosen car. */
   private cameraTarget = -1;
   private replaying = false;
@@ -117,6 +124,15 @@ export class App {
         mutationRate: clamp(stored.mutationRate ?? DEFAULT_MUTATION_RATE, 0, 1),
         mutationSize: clamp(stored.mutationSize ?? DEFAULT_MUTATION_SIZE, 0.01, 1),
         eliteCount: clamp(stored.eliteCount ?? DEFAULT_ELITE_COUNT, 0, MAX_ELITE_COUNT),
+        diversityPressure: clamp(
+          stored.diversityPressure ?? DEFAULT_DIVERSITY_PRESSURE,
+          0,
+          MAX_DIVERSITY_PRESSURE,
+        ),
+        immigrants: clamp(stored.immigrants ?? DEFAULT_IMMIGRANTS, 0, MAX_IMMIGRANTS),
+        ...(stored.goal ? { goal: stored.goal } : {}),
+        ...(stored.selection ? { selection: stored.selection } : {}),
+        ...(stored.crossoverMode ? { crossoverMode: stored.crossoverMode } : {}),
       },
     });
 
@@ -146,6 +162,11 @@ export class App {
       onMutationSize: (size) => this.setParam('mutationSize', size),
       onEliteCount: (count) => this.setParam('eliteCount', count),
       onPopulationSize: (size) => this.setParam('populationSize', size),
+      onGoal: (goal) => this.setParam('goal', goal),
+      onSelection: (method) => this.setParam('selection', method),
+      onCrossover: (mode) => this.setParam('crossoverMode', mode),
+      onDiversity: (pressure) => this.setParam('diversityPressure', pressure),
+      onImmigrants: (count) => this.setParam('immigrants', count),
       onRebuildTrack: (nextSeed) => this.rebuildTrack(nextSeed),
       onRandomSeed: () => this.panel.setSeed(randomSeed()),
       onResetPopulation: () => this.resetPopulation(),
@@ -194,6 +215,11 @@ export class App {
       if (this.renderer3d) {
         this.renderer3d.showTrails = (event.target as HTMLInputElement).checked;
       }
+    });
+    element<HTMLInputElement>('toggle-lineage').addEventListener('change', (event) => {
+      this.colourByLineage = (event.target as HTMLInputElement).checked;
+      if (this.renderer3d) this.renderer3d.colourByLineage = this.colourByLineage;
+      this.renderer.colourByLineage = this.colourByLineage;
     });
 
     this.installInputHandlers();
@@ -403,6 +429,7 @@ export class App {
     const live = this.mode === '2d' ? this.ghost.score : -Infinity;
     this.readouts.set('best', Math.max(this.current.best, live, 0).toFixed(1));
     this.readouts.set('sps', String(this.loop.stepsPerSecond));
+    this.readouts.set('lineages', String(countLiving(snapshot)));
 
     if (this.replaying) {
       const seconds = (this.ghost.position / PHYSICS_HZ).toFixed(1);

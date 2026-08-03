@@ -103,6 +103,13 @@
             selection locking in a weight that keeps paying off.
           </p>
         </section>
+        <section class="panel hall-panel">
+          <div class="panel-head">
+            <h2>Hall of fame</h2>
+            <button type="button" id="clear-hall" class="ghost-button small">Clear</button>
+          </div>
+          <div id="leaderboard"></div>
+        </section>
       </div>
 
       <div class="column-side">
@@ -147,6 +154,16 @@
             <p class="hint" id="view2d-note" hidden>
               Scroll to zoom. Switch to 3D for the orbit camera and the graveyard.
             </p>
+            <div class="details-body">
+              <label class="toggle">
+                <input type="checkbox" id="toggle-lineage" />
+                Colour by family <span data-readout="lineages">0</span>
+              </label>
+              <p class="hint">
+                Every car takes the colour of the line it descends from, so you can see a family
+                take over, or several hold on if diversity pressure is up.
+              </p>
+            </div>
           </details>
 
           <details>
@@ -187,6 +204,73 @@
           </details>
 
           <details>
+            <summary><h2>Selection</h2></summary>
+            <div class="details-body">
+              <div class="control">
+                <label for="goal">Selected for</label>
+                <select id="goal">
+                  <option value="speed">Distance and speed</option>
+                  <option value="distance">Distance only</option>
+                  <option value="airtime">Air time</option>
+                  <option value="efficiency">Distance per kilo</option>
+                </select>
+                <p class="hint">
+                  What counts as a good car. Air time breeds jumpers, distance per kilo breeds
+                  flimsy ones. Applies from the next generation.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="selection">Parents chosen by</label>
+                <select id="selection">
+                  <option value="rank">Rank, exponential</option>
+                  <option value="tournament">Tournament of three</option>
+                  <option value="roulette">Roulette, by fitness</option>
+                </select>
+                <p class="hint">
+                  Rank is the original's and is the gentlest of the three: with twenty cars it
+                  picks a top five parent about a third of the time. Tournament is the harshest at
+                  well over half. Roulette sits between them until one car runs away with it, and
+                  then it collapses fast.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="crossover">Breeding</label>
+                <select id="crossover">
+                  <option value="two-point">Two point</option>
+                  <option value="uniform">Uniform</option>
+                  <option value="none">Asexual, clones only</option>
+                </select>
+                <p class="hint">
+                  Two point keeps runs of neighbouring corners together. Asexual turns this into
+                  mutation only, which is a genuinely different search.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="diversity">
+                  Diversity pressure <output data-readout="diversity">0%</output>
+                </label>
+                <input id="diversity" type="range" min="0" max="100" step="1" value="0" />
+                <p class="hint">
+                  Divides a car's fitness by how many near identical cars it is competing with. At
+                  zero the gene pool collapses onto one design within a dozen generations. Turn it
+                  up and watch the heatmap stay varied.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="immigrants">
+                  Fresh blood <output data-readout="immigrants">0</output>
+                </label>
+                <input id="immigrants" type="range" min="0" max="8" step="1" value="0" />
+                <p class="hint">Random newcomers each generation, replacing the worst children.</p>
+              </div>
+            </div>
+          </details>
+
+          <details>
             <summary><h2>Track seed</h2></summary>
             <div class="details-body">
               <div class="seed-row">
@@ -201,13 +285,6 @@
           </details>
         </section>
 
-        <section class="panel hall-panel">
-          <div class="panel-head">
-            <h2>Hall of fame</h2>
-            <button type="button" id="clear-hall" class="ghost-button small">Clear</button>
-          </div>
-          <div id="leaderboard"></div>
-        </section>
       </div>
 
       <section class="panel about-panel">

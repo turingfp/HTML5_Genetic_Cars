@@ -48,7 +48,10 @@ describe('3D genome', () => {
     let violation: string | null = null;
     for (let i = 0; i < 2000 && !violation; i++) {
       const other = randomCar3D(rng);
-      def = car3DOps.mutate(rng, car3DOps.crossover(rng, def, other), { rate: 0.4, size: rng() });
+      def = car3DOps.mutate(rng, car3DOps.crossover(rng, def, other, 'two-point'), {
+        rate: 0.4,
+        size: rng(),
+      });
       if (!(def.halfWidth > 0)) violation = `halfWidth ${def.halfWidth} at ${i}`;
       else if (!(def.wheelGap > 0)) violation = `wheelGap ${def.wheelGap} at ${i}`;
       else if (new Set(def.base.wheels.map((w) => w.vertex)).size !== def.base.wheels.length) {

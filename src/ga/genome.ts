@@ -39,6 +39,18 @@ export interface Vec2 {
   y: number;
 }
 
+/**
+ * How two parents are combined.
+ *
+ * `two-point` is the original's: the active parent flips at two points along
+ * the chassis, so a child inherits runs of adjacent corners. `uniform` decides
+ * every corner independently, which mixes far harder and destroys good runs of
+ * shape as readily as it finds new ones. `none` makes this asexual: children
+ * are mutated clones of a single parent, which is a genuinely different search
+ * and worth being able to compare against.
+ */
+export type CrossoverMode = 'two-point' | 'uniform' | 'none';
+
 /** One chassis corner, in polar form. This is what actually mutates. */
 export interface Spoke {
   /**
@@ -203,7 +215,15 @@ export function cloneCar(def: CarDef): CarDef {
  * The wheels and the network do not have that neighbourhood, so they are drawn
  * independently instead.
  */
-export function crossover(rng: Rng, a: CarDef, b: CarDef): CarDef {
+export function crossover(
+  rng: Rng,
+  a: CarDef,
+  b: CarDef,
+  mode: CrossoverMode = 'two-point',
+): CarDef {
+  // Asexual: a mutated clone of one parent, with no mixing at all.
+  if (mode === 'none') return cloneCar(rng() < 0.5 ? a : b);
+
   const swap1 = Math.floor(rng() * CHASSIS_VERTEX_COUNT);
   let swap2 = swap1;
   while (swap2 === swap1) swap2 = Math.floor(rng() * CHASSIS_VERTEX_COUNT);
@@ -212,7 +232,8 @@ export function crossover(rng: Rng, a: CarDef, b: CarDef): CarDef {
   let current = 0;
   const spokes: Spoke[] = [];
   for (let i = 0; i < CHASSIS_VERTEX_COUNT; i++) {
-    if (i === swap1 || i === swap2) current = current === 1 ? 0 : 1;
+    if (mode === 'uniform') current = rng() < 0.5 ? 0 : 1;
+    else if (i === swap1 || i === swap2) current = current === 1 ? 0 : 1;
     const spoke = parents[current]!.spokes[i]!;
     spokes.push({ angle: spoke.angle, length: spoke.length });
   }
@@ -239,6 +260,47 @@ export function crossover(rng: Rng, a: CarDef, b: CarDef): CarDef {
   repairWheelVertices(rng, child);
   rebuildVertices(child);
   return child;
+}
+
+/**
+ * How different two cars are, roughly normalised so that 1 is a substantial
+ * difference and 0 is identical.
+ *
+ * Used for the diversity pressure in `evolution.ts`, which needs to know how
+ * crowded a car's corner of the search space is. The driver's weights are left
+ * out deliberately: there are 94 of them against a handful of body genes, so
+ * including them would drown out every difference in shape, and it is the
+ * shapes that are worth keeping varied.
+ */
+export function genomeDistance(a: CarDef, b: CarDef): number {
+  let sum = 0;
+  let terms = 0;
+
+  for (let i = 0; i < CHASSIS_VERTEX_COUNT; i++) {
+    const sa = a.spokes[i]!;
+    const sb = b.spokes[i]!;
+    const dl = (sa.length - sb.length) / CHASSIS_AXIS_RANGE;
+    // Angles already span [-1, 1], so half their difference is a fraction.
+    const da = (sa.angle - sb.angle) / 2;
+    sum += dl * dl + da * da;
+    terms += 2;
+  }
+
+  const dw = (a.wheels.length - b.wheels.length) / (MAX_WHEEL_COUNT - MIN_WHEEL_COUNT || 1);
+  const dd = (a.chassisDensity - b.chassisDensity) / CHASSIS_DENSITY_RANGE;
+  // Wheel count is structural, so it is worth more than any single corner.
+  sum += dw * dw * 4 + dd * dd;
+  terms += 5;
+
+  const shared = Math.min(a.wheels.length, b.wheels.length);
+  for (let i = 0; i < shared; i++) {
+    const dr = (a.wheels[i]!.radius - b.wheels[i]!.radius) / WHEEL_RADIUS_RANGE;
+    const dn = (a.wheels[i]!.density - b.wheels[i]!.density) / WHEEL_DENSITY_RANGE;
+    sum += dr * dr + dn * dn;
+    terms += 2;
+  }
+
+  return Math.sqrt(sum / terms);
 }
 
 /** Mutate a genome in place and return it. */

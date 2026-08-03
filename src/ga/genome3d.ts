@@ -20,10 +20,12 @@ import type { Rng } from '../core/rng';
 import {
   cloneCar,
   crossover,
+  genomeDistance,
   mutate,
   mutateValue,
   randomCar,
   type CarDef,
+  type CrossoverMode,
   type MutationParams,
 } from './genome';
 import type { GenomeOps } from './evolution';
@@ -49,9 +51,15 @@ export function cloneCar3D(def: Car3DDef): Car3DDef {
   return { base: cloneCar(def.base), halfWidth: def.halfWidth, wheelGap: def.wheelGap };
 }
 
-export function crossover3D(rng: Rng, a: Car3DDef, b: Car3DDef): Car3DDef {
+export function crossover3D(
+  rng: Rng,
+  a: Car3DDef,
+  b: Car3DDef,
+  mode: CrossoverMode = 'two-point',
+): Car3DDef {
+  if (mode === 'none') return cloneCar3D(rng() < 0.5 ? a : b);
   return {
-    base: crossover(rng, a.base, b.base),
+    base: crossover(rng, a.base, b.base, mode),
     // The two width genes are inherited independently of the silhouette.
     halfWidth: rng() < 0.5 ? a.halfWidth : b.halfWidth,
     wheelGap: rng() < 0.5 ? a.wheelGap : b.wheelGap,
@@ -75,11 +83,21 @@ export function mutate3D(rng: Rng, def: Car3DDef, params: MutationParams): Car3D
   return def;
 }
 
+/** As `genomeDistance`, plus the two genes that only exist in three dimensions. */
+export function genomeDistance3D(a: Car3DDef, b: Car3DDef): number {
+  const body = genomeDistance(a.base, b.base);
+  const dw = (a.halfWidth - b.halfWidth) / CHASSIS_HALF_WIDTH_RANGE;
+  const dg = (a.wheelGap - b.wheelGap) / WHEEL_GAP_RANGE;
+  // Averaged in as two more terms alongside the silhouette's.
+  return Math.sqrt((body * body * 21 + dw * dw + dg * dg) / 23);
+}
+
 export const car3DOps: GenomeOps<Car3DDef> = {
   random: randomCar3D,
   crossover: crossover3D,
   mutate: mutate3D,
   clone: cloneCar3D,
+  distance: genomeDistance3D,
 };
 
 /** The chassis hull: the silhouette mirrored to both sides. */

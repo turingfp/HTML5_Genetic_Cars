@@ -65,6 +65,10 @@ export class Car3D {
   readonly def: Car3DDef;
   readonly index: number;
   readonly isElite: boolean;
+  /** Which founding line this car descends from. */
+  readonly lineage: number;
+  /** Chassis plus wheels, measured once the bodies exist. */
+  mass = 0;
 
   chassis: Box3DBody | null = null;
   wheels: Box3DBody[] = [];
@@ -92,10 +96,11 @@ export class Car3D {
   /** Height of the road where it died, so a marker can sit on the surface. */
   deathRoadY = 0;
 
-  constructor(world: Box3DWorld, def: Car3DDef, index: number, isElite: boolean) {
+  constructor(world: Box3DWorld, def: Car3DDef, index: number, isElite: boolean, lineage = 0) {
     this.def = def;
     this.index = index;
     this.isElite = isElite;
+    this.lineage = lineage;
 
     const filter = { categoryBits: 1, maskBits: 0xffff, groupIndex: CAR_COLLISION_GROUP };
 
@@ -154,6 +159,7 @@ export class Car3D {
     });
 
     this.chassis = chassis;
+    this.mass = totalMass;
   }
 
   /** Let the driver set the wheel speeds. See `Car.drive` in the flat mode. */

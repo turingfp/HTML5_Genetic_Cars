@@ -3,6 +3,7 @@
  */
 
 import type { CarDef } from '../ga/genome';
+import { lineageColour } from '../ga/lineage';
 import type { Pose } from '../replay/recorder';
 import type { WorldSnapshot } from '../sim/simulation';
 import { surfaceIndexAt, type TrackDef } from '../sim/track';
@@ -23,7 +24,22 @@ export interface GhostFrame {
   wheels: readonly Pose[];
 }
 
+/** A style built from a family's hue, so a whole line reads as one colour. */
+function lineageStyle(lineage: number): CarStyle {
+  return {
+    body: lineageColour(lineage, 70, 60, 0.45),
+    stroke: lineageColour(lineage, 80, 72),
+    spoke: lineageColour(lineage, 70, 70, 0.28),
+    wheel: '#1e293b',
+    wheelStroke: lineageColour(lineage, 80, 72),
+    alpha: 1,
+  };
+}
+
 export class Renderer {
+  /** Colour cars by the family they descend from rather than by status. */
+  colourByLineage = false;
+
   readonly camera: Camera;
   private ctx: CanvasRenderingContext2D;
 
@@ -153,12 +169,18 @@ export class Renderer {
 
       // Draw the leader last so it stays on top of the pack.
       if (i === snapshot.leaderIndex) continue;
-      const style: CarStyle = car.isElite ? ELITE_STYLE : NORMAL_STYLE;
+      const style: CarStyle = this.colourByLineage
+        ? lineageStyle(car.lineage)
+        : car.isElite
+          ? ELITE_STYLE
+          : NORMAL_STYLE;
       drawCar(ctx, carArt(car.def), car.chassis, car.wheels, style, camera.zoom);
     }
 
     const leader = snapshot.cars[snapshot.leaderIndex];
     if (leader?.alive && leader.def) {
+      // The leader keeps its own colour even when families are on, since
+      // losing track of who is winning costs more than the extra hue tells you.
       drawCar(ctx, carArt(leader.def), leader.chassis, leader.wheels, LEADER_STYLE, camera.zoom);
     }
   }

@@ -41,6 +41,19 @@ export const CHASSIS_AXIS_RANGE = 1.1;
 export const CHASSIS_VERTEX_COUNT = 8;
 
 /**
+ * How hard the population is pushed to stay varied, from 0 to 1.
+ *
+ * Off by default, so the search behaves as it always has until someone reaches
+ * for the slider and watches the gene pool stop collapsing.
+ */
+export const DEFAULT_DIVERSITY_PRESSURE = 0;
+export const MAX_DIVERSITY_PRESSURE = 1;
+
+/** Fresh random cars per generation. Off by default. */
+export const DEFAULT_IMMIGRANTS = 0;
+export const MAX_IMMIGRANTS = 8;
+
+/**
  * How far a chassis corner may swing inside its own sector, as a fraction of
  * half a sector.
  *

@@ -38,6 +38,10 @@ export class Car {
   readonly def: CarDef;
   readonly index: number;
   readonly isElite: boolean;
+  /** Which founding line this car descends from. */
+  readonly lineage: number;
+  /** Chassis plus wheels, measured once the bodies exist. */
+  readonly mass: number;
 
   chassis: Body | null = null;
   wheels: Body[] | null = null;
@@ -58,10 +62,11 @@ export class Car {
   /** Set once the car dies. */
   score = 0;
 
-  constructor(world: World, def: CarDef, index: number, isElite: boolean) {
+  constructor(world: World, def: CarDef, index: number, isElite: boolean, lineage = 0) {
     this.def = def;
     this.index = index;
     this.isElite = isElite;
+    this.lineage = lineage;
 
     const chassis = world.createBody({
       type: 'dynamic',
@@ -133,6 +138,7 @@ export class Car {
 
     this.chassis = chassis;
     this.wheels = wheels;
+    this.mass = totalMass;
   }
 
   /**

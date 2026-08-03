@@ -33,6 +33,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { CAMERA_SMOOTHING, PHYSICS_HZ } from '../config';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
+import { lineageHex, lineageHue } from '../ga/lineage';
 import { wheelHalfTread } from '../sim3d/car3d';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
 import type { Track3D } from '../sim3d/track3d';
@@ -69,6 +70,9 @@ export class Renderer3D {
 
   // Identical for every car and every generation, so built once and shared
   // rather than recreated each time a generation is born.
+  /** Colour cars by the family they descend from rather than by status. */
+  colourByLineage = false;
+
   private readonly wheelMaterial = new MeshStandardMaterial({
     color: 0x11161f,
     roughness: 0.85,
@@ -348,7 +352,11 @@ export class Renderer3D {
       // leader and the elites keep their fixed colours; the rest are spread
       // around the base hue so individuals can be followed by eye.
       if (i === snapshot.leaderIndex) {
+        // The leader keeps its own colour even with families on: losing track
+        // of who is winning costs more than the extra hue tells you.
         meshes.material.color.setHex(LEADER_COLOR);
+      } else if (this.colourByLineage) {
+        meshes.material.color.setHSL(lineageHue(car.lineage), 0.66, 0.56);
       } else if (car.isElite) {
         meshes.material.color.setHex(ELITE_COLOR);
       } else {
@@ -367,7 +375,14 @@ export class Renderer3D {
         snapshot.cars.map((car, i) => ({
           alive: car.alive,
           position: car.chassis.position,
-          color: i === snapshot.leaderIndex ? LEADER_COLOR : car.isElite ? ELITE_COLOR : NORMAL_COLOR,
+          color:
+            i === snapshot.leaderIndex
+              ? LEADER_COLOR
+              : this.colourByLineage
+                ? lineageHex(car.lineage)
+                : car.isElite
+                  ? ELITE_COLOR
+                  : NORMAL_COLOR,
         })),
       );
     }

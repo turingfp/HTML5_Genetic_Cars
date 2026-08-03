@@ -27,6 +27,8 @@ export interface Car3DSnapshot {
   activations: Float32Array;
   /** What its hidden layer is carrying into the next step. */
   memory: Float32Array;
+  /** Which founding line this car descends from. */
+  lineage: number;
 }
 
 export interface World3DSnapshot {

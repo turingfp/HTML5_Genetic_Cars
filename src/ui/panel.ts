@@ -7,6 +7,7 @@
  */
 
 import { SPEEDS, type Speed } from '../config';
+import type { CrossoverMode, FitnessGoal, SelectionMethod } from '../ga/evolution';
 
 export interface PanelCallbacks {
   onSpeed: (speed: Speed) => void;
@@ -15,6 +16,11 @@ export interface PanelCallbacks {
   onMutationSize: (size: number) => void;
   onEliteCount: (count: number) => void;
   onPopulationSize: (size: number) => void;
+  onGoal: (goal: FitnessGoal) => void;
+  onSelection: (method: SelectionMethod) => void;
+  onCrossover: (mode: CrossoverMode) => void;
+  onDiversity: (pressure: number) => void;
+  onImmigrants: (count: number) => void;
   onRebuildTrack: (seed: string) => void;
   onRandomSeed: () => void;
   onResetPopulation: () => void;
@@ -40,6 +46,12 @@ export class Panel {
   readonly mutationSize: HTMLInputElement;
   readonly elites: HTMLInputElement;
   readonly population: HTMLInputElement;
+  readonly diversity: HTMLInputElement;
+  readonly immigrants: HTMLInputElement;
+
+  private goal: HTMLSelectElement;
+  private selection: HTMLSelectElement;
+  private crossover: HTMLSelectElement;
 
   constructor(callbacks: PanelCallbacks) {
     const speeds = required<HTMLDivElement>('speeds');
@@ -83,6 +95,31 @@ export class Panel {
       callbacks.onPopulationSize(Number(this.population.value));
     });
 
+    this.diversity = required<HTMLInputElement>('diversity');
+    this.diversity.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onDiversity(Number(this.diversity.value) / 100);
+    });
+
+    this.immigrants = required<HTMLInputElement>('immigrants');
+    this.immigrants.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onImmigrants(Number(this.immigrants.value));
+    });
+
+    this.goal = required<HTMLSelectElement>('goal');
+    this.goal.addEventListener('change', () => callbacks.onGoal(this.goal.value as FitnessGoal));
+
+    this.selection = required<HTMLSelectElement>('selection');
+    this.selection.addEventListener('change', () =>
+      callbacks.onSelection(this.selection.value as SelectionMethod),
+    );
+
+    this.crossover = required<HTMLSelectElement>('crossover');
+    this.crossover.addEventListener('change', () =>
+      callbacks.onCrossover(this.crossover.value as CrossoverMode),
+    );
+
     this.seedInput = required<HTMLInputElement>('seed-input');
     required('rebuild').addEventListener('click', () => {
       const seed = this.seedInput.value.trim();
@@ -125,11 +162,21 @@ export class Panel {
     mutationSize: number;
     eliteCount: number;
     populationSize: number;
+    diversityPressure: number;
+    immigrants: number;
+    goal: FitnessGoal;
+    selection: SelectionMethod;
+    crossoverMode: CrossoverMode;
   }): void {
     this.mutationRate.value = String(Math.round(values.mutationRate * 100));
     this.mutationSize.value = String(Math.round(values.mutationSize * 100));
     this.elites.value = String(values.eliteCount);
     this.population.value = String(values.populationSize);
+    this.diversity.value = String(Math.round(values.diversityPressure * 100));
+    this.immigrants.value = String(values.immigrants);
+    this.goal.value = values.goal;
+    this.selection.value = values.selection;
+    this.crossover.value = values.crossoverMode;
     this.syncLabels();
   }
 
@@ -143,5 +190,7 @@ export class Panel {
     set('mutation-size', `${this.mutationSize.value}%`);
     set('elites', this.elites.value);
     set('population', this.population.value);
+    set('diversity', `${this.diversity.value}%`);
+    set('immigrants', this.immigrants.value);
   }
 }

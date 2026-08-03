@@ -96,6 +96,7 @@ h3 {
   grid-template-columns: minmax(0, 1fr) 336px;
   grid-template-areas:
     "header header"
+    "stage  side"
     "main   side"
     "about  about";
   align-items: start;
@@ -130,12 +131,20 @@ h3 {
 }
 
 .stage {
+  grid-area: stage;
   display: grid;
   gap: 10px;
   align-content: start;
+  min-width: 0;
 }
 
+/* Controls sit at the top of the sidebar, above the readouts. They are what
+   you came to touch; Cars, Fitness and the course map are ambient and read
+   fine further down. Before this the track editor and the room were the very
+   last panels on the page, below everything else, which is a good way to build
+   features nobody ever finds. */
 .controls-panel {
+  order: -1;
   gap: 2px;
 }
 
@@ -144,8 +153,9 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "header"
-      "main"
+      "stage"
       "side"
+      "main"
       "about";
   }
 }
@@ -932,4 +942,23 @@ summary:hover h2 {
 
 .room-status[data-status='trouble'] {
   color: #fbbf24;
+}
+
+/* ── Workshop ───────────────────────────────────────────────────────────── */
+
+.workshop-canvas {
+  display: block;
+  width: 100%;
+  height: 210px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  /* The corners are dragged, so the browser must not steal the gesture for
+     scrolling. */
+  touch-action: none;
+}
+
+.workshop-canvas:active {
+  cursor: grabbing;
 }

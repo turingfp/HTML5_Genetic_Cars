@@ -143,6 +143,38 @@ export class Simulation {
   onCarDeath: ((car: Car) => void) | null = null;
 
   /**
+   * Cars a person built by hand, waiting for a place in the next generation.
+   *
+   * Kept apart from migrants because it must not depend on a setting: someone
+   * who presses "race this car" has said exactly what they want, and finding
+   * that it silently did nothing because a slider was at zero would be absurd.
+   */
+  private pending: CarDef[] = [];
+
+  /** Put a hand-built car into the next generation. */
+  enqueue(def: CarDef): void {
+    // A small cap, so holding the button cannot crowd out the population.
+    if (this.pending.length < 8) this.pending.push(def);
+  }
+
+  /**
+   * Give each queued car a slot, taking the weakest non-elite places.
+   *
+   * Placed among the ordinary children so a hand-built car competes on the
+   * same terms as everything else, and given a lineage of its own, since it
+   * descends from nothing in this run.
+   */
+  private placePending(entries: CarEntry[], elites: number): void {
+    if (this.pending.length === 0) return;
+    let slot = entries.length - 1;
+    for (const def of this.pending.splice(0)) {
+      if (slot < elites || slot < 0) break;
+      entries[slot] = { def, index: slot, isElite: false, lineage: this.nextLineage++ };
+      slot--;
+    }
+  }
+
+  /**
    * Where migrant cars come from, when a room is connected.
    *
    * A function rather than a reference to the room, so the simulation knows
@@ -312,16 +344,16 @@ export class Simulation {
     const finished = this.scores;
     this.onGenerationEnd?.(finished, this.generation);
     this.generation++;
-    this.spawn(
-      nextGeneration(
-        finished,
-        this.params,
-        this.rng,
-        undefined,
-        this.nextLineage,
-        this.migrantSource,
-      ),
+    const entries = nextGeneration(
+      finished,
+      this.params,
+      this.rng,
+      undefined,
+      this.nextLineage,
+      this.migrantSource,
     );
+    this.placePending(entries, entries.filter((e) => e.isElite).length);
+    this.spawn(entries);
   }
 
   /** Start over with a fresh random population on the same track. */

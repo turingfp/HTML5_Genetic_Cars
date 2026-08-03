@@ -35,45 +35,45 @@
         </div>
       </header>
 
-      <div class="column-main">
-        <section class="stage">
-          <div class="stage-view">
-            <canvas id="view" aria-label="Simulation view" hidden></canvas>
-            <canvas id="view3d" aria-label="3D simulation view"></canvas>
-            <div class="hud">
-              <div class="hud-item">
-                <span class="hud-label">generation</span>
-                <span class="hud-value" data-readout="generation">0</span>
-              </div>
-              <div class="hud-item">
-                <span class="hud-label">alive</span>
-                <span class="hud-value" data-readout="alive">0</span>
-              </div>
-              <div class="hud-item">
-                <span class="hud-label">distance</span>
-                <span class="hud-value" data-readout="distance">0.0m</span>
-              </div>
-              <div class="hud-item">
-                <span class="hud-label">best ever</span>
-                <span class="hud-value" data-readout="best">0.0</span>
-              </div>
-              <div class="hud-item hud-perf">
-                <span class="hud-label">steps/s</span>
-                <span class="hud-value" data-readout="sps">0</span>
-              </div>
+      <section class="stage">
+        <div class="stage-view">
+          <canvas id="view" aria-label="Simulation view" hidden></canvas>
+          <canvas id="view3d" aria-label="3D simulation view"></canvas>
+          <div class="hud">
+            <div class="hud-item">
+              <span class="hud-label">generation</span>
+              <span class="hud-value" data-readout="generation">0</span>
             </div>
-            <div class="medal-bar" id="medals" aria-label="Progress along the track"></div>
-            <div class="stage-banner" id="banner" hidden></div>
+            <div class="hud-item">
+              <span class="hud-label">alive</span>
+              <span class="hud-value" data-readout="alive">0</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label">distance</span>
+              <span class="hud-value" data-readout="distance">0.0m</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label">best ever</span>
+              <span class="hud-value" data-readout="best">0.0</span>
+            </div>
+            <div class="hud-item hud-perf">
+              <span class="hud-label">steps/s</span>
+              <span class="hud-value" data-readout="sps">0</span>
+            </div>
           </div>
+          <div class="medal-bar" id="medals" aria-label="Progress along the track"></div>
+          <div class="stage-banner" id="banner" hidden></div>
+        </div>
 
-          <div class="transport">
-            <button type="button" id="pause" class="primary-button">Pause</button>
-            <div class="segmented" id="speeds" role="group" aria-label="Simulation speed"></div>
-            <button type="button" id="follow" class="ghost-button">Follow leader</button>
-            <button type="button" id="replay" class="ghost-button">Watch best run</button>
-          </div>
-        </section>
+        <div class="transport">
+          <button type="button" id="pause" class="primary-button">Pause</button>
+          <div class="segmented" id="speeds" role="group" aria-label="Simulation speed"></div>
+          <button type="button" id="follow" class="ghost-button">Follow leader</button>
+          <button type="button" id="replay" class="ghost-button">Watch best run</button>
+        </div>
+      </section>
 
+      <div class="column-main">
         <section class="panel brain-panel">
           <div class="panel-head">
             <h2>Driver</h2>
@@ -167,7 +167,7 @@
             </div>
           </details>
 
-          <details>
+          <details open>
             <summary><h2>Evolution</h2></summary>
             <div class="details-body">
               <div class="control">
@@ -276,7 +276,12 @@
             <div class="details-body" id="track-editor"></div>
           </details>
 
-          <details>
+          <details open>
+            <summary><h2>Workshop</h2></summary>
+            <div class="details-body" id="workshop"></div>
+          </details>
+
+          <details open>
             <summary><h2>Room</h2></summary>
             <div class="details-body" id="room-panel"></div>
           </details>

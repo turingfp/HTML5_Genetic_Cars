@@ -93,6 +93,43 @@ export class Simulation3D {
 
   onCarDeath: ((car: Car3D) => void) | null = null;
 
+  /**
+   * Cars a person built by hand, waiting for a place in the next generation.
+   *
+   * Kept apart from migrants because it must not depend on a setting: someone
+   * who presses "race this car" has said exactly what they want, and finding
+   * that it silently did nothing because a slider was at zero would be absurd.
+   */
+  private pending: Car3DDef[] = [];
+
+  /** Put a hand-built car into the next generation. */
+  enqueue(def: Car3DDef): void {
+    // A small cap, so holding the button cannot crowd out the population.
+    if (this.pending.length < 8) this.pending.push(def);
+  }
+
+  /**
+   * Give each queued car a slot, taking the weakest non-elite places.
+   *
+   * Placed after the elites so a hand-built car competes on the same terms as
+   * everything else, and given a lineage of its own, since it descends from
+   * nothing in this run.
+   */
+  private placePending(entries: CarEntry<Car3DDef>[], elites: number): void {
+    if (this.pending.length === 0) return;
+    let slot = entries.length - 1;
+    for (const def of this.pending.splice(0)) {
+      if (slot <= elites - 1 || slot < 0) break;
+      entries[slot] = {
+        def,
+        index: slot,
+        isElite: false,
+        lineage: this.nextLineage++,
+      };
+      slot--;
+    }
+  }
+
   /** Where migrant cars come from, when a room is connected. See Simulation. */
   migrantSource: (() => Car3DDef | null) | null = null;
   onGenerationEnd: ((scores: CarScore<Car3DDef>[], generation: number) => void) | null = null;
@@ -272,16 +309,16 @@ export class Simulation3D {
     const finished = this.scores;
     this.onGenerationEnd?.(finished, this.generation);
     this.generation++;
-    this.spawn(
-      nextGeneration(
-        finished,
-        this.params,
-        this.rng,
-        car3DOps,
-        this.nextLineage,
-        this.migrantSource,
-      ),
+    const entries = nextGeneration(
+      finished,
+      this.params,
+      this.rng,
+      car3DOps,
+      this.nextLineage,
+      this.migrantSource,
     );
+    this.placePending(entries, entries.filter((e) => e.isElite).length);
+    this.spawn(entries);
   }
 
   resetPopulation(): void {

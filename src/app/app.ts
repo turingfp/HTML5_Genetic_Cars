@@ -41,10 +41,11 @@ import {
 import { MedalBar } from '../ui/medalbar';
 import { RoomPanel } from '../ui/roompanel';
 import { TrackEditor } from '../ui/trackeditor';
-import { randomSeed } from '../core/rng';
+import { Workshop } from '../ui/workshop';
+import { randomSeed, rngFromSeed } from '../core/rng';
 import type { CarScore, GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
-import type { Car3DDef } from '../ga/genome3d';
+import { randomCar3D, type Car3DDef } from '../ga/genome3d';
 import { BrainView } from '../render/brainview';
 import { Chart, type GenerationStats } from '../render/chart';
 import { GenePool, type GenePoolCar } from '../render/genepool';
@@ -254,6 +255,11 @@ export class App {
       onCopy: (code) => void this.copyCode(code),
     });
     this.trackEditor.onCodePasted = (code) => this.loadCode(code);
+
+    new Workshop(element('workshop'), {
+      onRace: (def) => this.raceHandBuilt(def),
+      onCopyLeader: () => this.leaderSilhouette(),
+    });
 
     this.roomPanel = new RoomPanel(element('room-panel'), suggestName(Math.random), {
       onJoin: (name) => void this.joinRoom(name),
@@ -745,6 +751,33 @@ export class App {
       // in a text field either way, so this is a nudge rather than a failure.
       this.flashBanner('Could not copy. The code is in the box, select it.');
     }
+  }
+
+  /**
+   * Put a hand-built car into whichever world is on screen.
+   *
+   * The 3D mode needs the two genes a silhouette has no opinion about, so they
+   * are taken from a random 3D car rather than invented: a body someone drew
+   * flat says nothing about how wide it should be.
+   */
+  private raceHandBuilt(def: CarDef): void {
+    if (this.mode === '3d' && this.sim3d) {
+      const shape = randomCar3D(rngFromSeed(String(Math.random())));
+      this.sim3d.enqueue({ ...shape, base: def });
+    } else {
+      this.sim.enqueue(def);
+    }
+    this.flashBanner('Your car is in. It starts with the next generation.');
+  }
+
+  /** The silhouette of whatever is currently in front, for copying. */
+  private leaderSilhouette(): CarDef | null {
+    if (this.mode === '3d') {
+      const car = this.snapshot3d.cars[this.snapshot3d.leaderIndex];
+      return car?.def ? structuredClone(car.def.base) : null;
+    }
+    const car = this.snapshot.cars[this.snapshot.leaderIndex];
+    return car?.def ? structuredClone(car.def) : null;
   }
 
   /** How long the current course is, which is what medals measure against. */

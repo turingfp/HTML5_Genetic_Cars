@@ -14,9 +14,11 @@ import {
   DEFAULT_POPULATION_SIZE,
   DEFAULT_DIVERSITY_PRESSURE,
   DEFAULT_IMMIGRANTS,
+  DEFAULT_MIGRANTS,
   MAX_DIVERSITY_PRESSURE,
   MAX_ELITE_COUNT,
   MAX_IMMIGRANTS,
+  MAX_MIGRANTS,
   MAX_POPULATION_SIZE,
   MIN_POPULATION_SIZE,
   PHYSICS_HZ,
@@ -26,6 +28,19 @@ import {
   type Speed,
 } from '../config';
 import { hasWebGL } from '../core/device';
+import { Room, suggestName, type Peer } from '../net/room';
+import { packCar, packCar3D, unpackCar, unpackCar3D } from '../net/wire';
+import {
+  decodeSpec,
+  defaultSpec,
+  encodeSpec,
+  medalFor,
+  normaliseSpec,
+  type TrackSpec,
+} from '../track/spec';
+import { MedalBar } from '../ui/medalbar';
+import { RoomPanel } from '../ui/roompanel';
+import { TrackEditor } from '../ui/trackeditor';
 import { randomSeed } from '../core/rng';
 import type { CarScore, GAParams } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
@@ -47,6 +62,7 @@ import {
   saveSettings,
   seedFromUrl,
   syncSeedToUrl,
+  trackCodeFromUrl,
   type HallOfFameEntry,
 } from '../ui/storage';
 import type { Renderer3D } from '../render3d/renderer3d';
@@ -109,6 +125,20 @@ export class App {
   /** Why 3D last refused to start, if it did. */
   private failure3d: string | null = null;
 
+  private trackEditor: TrackEditor;
+  private roomPanel: RoomPanel;
+  private medalBar: MedalBar;
+
+  /** The design now being driven, as opposed to the one in the editor. */
+  private spec: TrackSpec;
+
+  /** The room, once someone has asked to join one. */
+  private room: Room | null = null;
+  /** Cars this tab has evaluated all session, which is its share of the work. */
+  private evaluations = 0;
+  /** What this tab calls itself in the room. */
+  private roomName = 'you';
+
   private snapshot: WorldSnapshot = createSnapshot();
   /**
    * Records are kept per mode. The two modes are different problems with
@@ -142,7 +172,11 @@ export class App {
 
   constructor() {
     const stored = loadSettings();
-    const seed = seedFromUrl() ?? randomSeed();
+    // A link may carry the whole design, or only a seed if it predates codes,
+    // or neither.
+    const shared = decodeSpec(trackCodeFromUrl() ?? '');
+    this.spec = shared ?? defaultSpec(seedFromUrl() ?? randomSeed());
+    const seed = this.spec.seed;
 
     this.sim = new Simulation({
       trackSeed: seed,
@@ -161,11 +195,16 @@ export class App {
           MAX_DIVERSITY_PRESSURE,
         ),
         immigrants: clamp(stored.immigrants ?? DEFAULT_IMMIGRANTS, 0, MAX_IMMIGRANTS),
+        migrants: clamp(stored.migrants ?? DEFAULT_MIGRANTS, 0, MAX_MIGRANTS),
         ...(stored.goal ? { goal: stored.goal } : {}),
         ...(stored.selection ? { selection: stored.selection } : {}),
         ...(stored.crossoverMode ? { crossoverMode: stored.crossoverMode } : {}),
       },
     });
+
+    // The constructor only takes a seed, so a shared design is applied here.
+    // Cheap: nothing has been stepped yet.
+    this.sim.setTrackSpec(this.spec);
 
     this.renderer = new Renderer(element<HTMLCanvasElement>('view'));
     this.minimap = new Minimap(element<HTMLCanvasElement>('minimap'));
@@ -198,8 +237,6 @@ export class App {
       onCrossover: (mode) => this.setParam('crossoverMode', mode),
       onDiversity: (pressure) => this.setParam('diversityPressure', pressure),
       onImmigrants: (count) => this.setParam('immigrants', count),
-      onRebuildTrack: (nextSeed) => this.rebuildTrack(nextSeed),
-      onRandomSeed: () => this.panel.setSeed(randomSeed()),
       onResetPopulation: () => this.resetPopulation(),
       onToggleReplay: () => this.toggleReplay(),
       onFollowLeader: () => this.setCameraTarget(-1),
@@ -208,9 +245,25 @@ export class App {
     });
 
     this.panel.setValues(this.sim.params);
-    this.panel.setSeed(this.sim.trackSeed);
     this.readouts.set('seed', this.sim.trackSeed);
-    syncSeedToUrl(this.sim.trackSeed);
+    syncSeedToUrl(this.sim.trackSeed, encodeSpec(this.spec));
+
+    this.medalBar = new MedalBar(element('medals'));
+    this.trackEditor = new TrackEditor(element('track-editor'), this.spec, {
+      // Previewing is free: the editor draws its own profile and the running
+      // simulation is left alone until someone asks for the new track.
+      onPreview: () => undefined,
+      onBuild: (spec) => this.buildTrack(spec),
+      onCopy: (code) => void this.copyCode(code),
+    });
+    this.trackEditor.onCodePasted = (code) => this.loadCode(code);
+
+    this.roomPanel = new RoomPanel(element('room-panel'), suggestName(Math.random), {
+      onJoin: (name) => void this.joinRoom(name),
+      onLeave: () => void this.leaveRoom(),
+      onMigrants: (count) => this.setParam('migrants', count),
+    });
+    this.roomPanel.setMigrants(this.sim.params.migrants);
 
     this.healthStrip.onSelect = (index) => this.setCameraTarget(index);
     this.leaderboard.onSelect = (entry) => this.exportCar(entry);
@@ -461,6 +514,9 @@ export class App {
     this.readouts.set('best', Math.max(this.current.best, live, 0).toFixed(1));
     this.readouts.set('sps', String(this.loop.stepsPerSecond));
     this.readouts.set('lineages', String(countLiving(snapshot)));
+    // The bar rewards the cars on screen right now, so it moves as they drive
+    // rather than jumping once a generation.
+    this.medalBar.update(snapshot.bestX, this.trackLength);
 
     if (this.replaying) {
       const seconds = (this.ghost.position / PHYSICS_HZ).toFixed(1);
@@ -501,6 +557,30 @@ export class App {
 
     // Each generation races the ghost from the start line again.
     this.ghost.rewind();
+
+    this.evaluations += scores.length;
+    this.medalBar.update(sorted[0]!.distance, this.trackLength);
+    this.shareWithRoom(sorted[0]!, generation);
+  }
+
+  /**
+   * Tell the room how the generation went, and offer its winner.
+   *
+   * Once per generation rather than continuously: a champion is only worth
+   * sending when it has finished being evaluated, and a leaderboard that
+   * updates twenty times a second is harder to read than one that updates
+   * when something happens.
+   */
+  private shareWithRoom(best: CarScore<CarDef | Car3DDef>, generation: number): void {
+    const room = this.room;
+    if (!room) return;
+    room.report(generation, best.distance, this.evaluations);
+    room.offerChampion(
+      'base' in best.def ? packCar3D(best.def) : packCar(best.def),
+      best.distance,
+      generation,
+    );
+    this.renderRoom();
   }
 
   private recordHallOfFame(best: CarScore<CarDef | Car3DDef>, generation: number): void {
@@ -611,13 +691,20 @@ export class App {
     if (this.mode === '2d') this.snapCameraToLeader();
   }
 
-  private rebuildTrack(seed: string): void {
-    this.sim.setTrack(seed);
-    // Both worlds follow the same seed, so switching mode shows the same course.
-    this.sim3d?.setTrack(seed);
-    // Deaths were recorded against the old course and mean nothing on this one.
+  /**
+   * Build a designed track and start the run over.
+   *
+   * The track is the experiment, so changing it invalidates everything
+   * measured against the old one: both modes' charts, the ghost, the death
+   * map. Keeping any of it would be comparing runs on different courses.
+   */
+  private buildTrack(spec: TrackSpec): void {
+    this.spec = normaliseSpec(spec);
+    this.sim.setTrackSpec(this.spec);
+    // Both worlds follow the same design, so switching mode shows the same
+    // course rather than a different one that happens to share a seed.
+    this.sim3d?.setTrackSpec(this.spec);
     this.renderer3d?.clearHistory();
-    // A new course invalidates both modes' progress charts.
     this.records['2d'].history = [];
     this.records['3d'].history = [];
     this.chart.draw(this.current.history);
@@ -625,11 +712,142 @@ export class App {
     this.minimap.exploredX = 0;
     this.replaying = false;
     this.panel.setReplaying(false);
-    this.panel.setSeed(seed);
-    this.readouts.set('seed', seed);
-    syncSeedToUrl(seed);
+    this.trackEditor.setSpec(this.spec);
+    this.medalBar.reset();
+    this.readouts.set('seed', this.spec.seed);
+    syncSeedToUrl(this.spec.seed, encodeSpec(this.spec));
     this.setCameraTarget(-1);
     if (this.mode === '2d') this.snapCameraToLeader();
+
+    // A room is a room *for a track*. Changing course means leaving the people
+    // driving the old one, which is better than silently comparing scores
+    // across different terrain.
+    if (this.room && this.room.code !== encodeSpec(this.spec)) {
+      void this.leaveRoom();
+      this.flashBanner('New track, so you have left the old room.');
+    }
+  }
+
+  /** Load a pasted code, if it is one. */
+  private loadCode(code: string): void {
+    const spec = decodeSpec(code);
+    if (!spec) {
+      this.flashBanner('That does not look like a track code.');
+      return;
+    }
+    this.buildTrack(spec);
+    this.flashBanner('Loaded a shared track.');
+  }
+
+  private async copyCode(code: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(code);
+      this.flashBanner('Track code copied.');
+    } catch {
+      // Clipboard access needs a permission the page may not have. The code is
+      // in a text field either way, so this is a nudge rather than a failure.
+      this.flashBanner('Could not copy. The code is in the box, select it.');
+    }
+  }
+
+  /** How long the current course is, which is what medals measure against. */
+  private get trackLength(): number {
+    return this.mode === '3d' && this.sim3d
+      ? this.sim3d.track.profile.length
+      : this.sim.track.length;
+  }
+
+  /* ── The room ────────────────────────────────────────────────────────── */
+
+  /**
+   * Join the room for this track.
+   *
+   * Only ever from a button. This announces the tab to strangers over public
+   * relays, so it is not something to do on someone's behalf.
+   */
+  private async joinRoom(name: string): Promise<void> {
+    if (this.room) return;
+    this.roomPanel.setStatus('connecting');
+    const code = encodeSpec(this.spec);
+    try {
+      this.roomName = name;
+      this.room = await Room.join(
+        code,
+        { name, mode: this.mode },
+        this.trackLength,
+        {
+          onChange: () => this.renderRoom(),
+          onChampion: (peer) => this.onChampionArrived(peer),
+        },
+      );
+      this.roomPanel.setStatus('online');
+      this.renderRoom();
+      this.attachMigrantSource();
+    } catch (error) {
+      this.room = null;
+      this.roomPanel.setStatus(
+        'failed',
+        error instanceof Error ? error.message : 'Could not reach the room.',
+      );
+    }
+  }
+
+  private async leaveRoom(): Promise<void> {
+    const room = this.room;
+    this.room = null;
+    this.sim.migrantSource = null;
+    if (this.sim3d) this.sim3d.migrantSource = null;
+    this.roomPanel.setStatus('offline');
+    await room?.leave();
+  }
+
+  /**
+   * Point both simulations at the room for their migrants.
+   *
+   * Each mode unpacks with its own validator, so a 3D car can never end up in
+   * the flat world or the other way round, and anything malformed is dropped
+   * rather than fixed.
+   */
+  private attachMigrantSource(): void {
+    this.sim.migrantSource = () => {
+      const offer = this.room?.takeMigrant('2d', Math.random);
+      return offer ? unpackCar(offer.car) : null;
+    };
+    if (this.sim3d) {
+      this.sim3d.migrantSource = () => {
+        const offer = this.room?.takeMigrant('3d', Math.random);
+        return offer ? unpackCar3D(offer.car) : null;
+      };
+    }
+  }
+
+  private onChampionArrived(peer: Peer): void {
+    if (this.sim.params.migrants <= 0) return;
+    this.flashBanner(`A car arrived from ${peer.name}.`);
+  }
+
+  private renderRoom(): void {
+    if (!this.room) return;
+    const best = Math.max(this.current.best, this.liveBest());
+    this.roomPanel.render(
+      this.room.peers(),
+      {
+        name: this.roomName,
+        best,
+        generation: this.generationNow(),
+        medal: medalFor(best, this.trackLength),
+      },
+      this.room.totalEvaluations(this.evaluations),
+    );
+  }
+
+  /** Furthest anything has reached this generation, in the mode on screen. */
+  private liveBest(): number {
+    return this.mode === '3d' ? this.snapshot3d.bestX : this.snapshot.bestX;
+  }
+
+  private generationNow(): number {
+    return this.mode === '3d' ? (this.sim3d?.generation ?? 0) : this.sim.generation;
   }
 
   /**
@@ -684,6 +902,9 @@ export class App {
       };
       this.sim3d.onGenerationEnd = (scores, generation) =>
         this.onGenerationEnd(scores, generation);
+      // The 3D world may be built long after a room was joined, so it wires
+      // itself up rather than waiting to be told.
+      if (this.room) this.attachMigrantSource();
       return true;
     } catch (error) {
       console.error(error);
@@ -744,6 +965,7 @@ export class App {
     element('view3d-controls').hidden = true;
     element('view2d-note').hidden = false;
     this.mode = '2d';
+    this.onModeChanged();
     this.showRecords();
     this.minimap.exploredX = 0;
     this.renderer.camera.resize();
@@ -761,8 +983,12 @@ export class App {
     if (!this.sim3d) return;
     this.markModeButtons('3d');
 
-    // Keep both worlds on the same course and settings.
-    if (this.sim3d.trackSeed !== this.sim.trackSeed) this.sim3d.setTrack(this.sim.trackSeed);
+    // Keep both worlds on the same course and settings. Comparing the whole
+    // design rather than the seed: two tracks can share a seed and differ in
+    // every other way now.
+    if (encodeSpec(this.sim3d.track.spec) !== encodeSpec(this.spec)) {
+      this.sim3d.setTrackSpec(this.spec);
+    }
     Object.assign(this.sim3d.params, this.sim.params);
 
     element<HTMLCanvasElement>('view').hidden = true;
@@ -770,6 +996,7 @@ export class App {
     element('view3d-controls').hidden = false;
     element('view2d-note').hidden = true;
     this.mode = '3d';
+    this.onModeChanged();
     this.showRecords();
     this.minimap.exploredX = 0;
     this.sim3d.snapshot(this.snapshot3d);
@@ -779,6 +1006,21 @@ export class App {
       this.snapshot3d.leader.z,
     );
     this.loop.resetClock();
+  }
+
+  /**
+   * Settle everything that depends on which mode is on screen.
+   *
+   * Scores only compare within a mode and the two courses are different
+   * lengths, so the medal bar restarts and the room is told which one this tab
+   * is now running.
+   */
+  private onModeChanged(): void {
+    this.trackEditor.setMode(this.mode);
+    this.medalBar.reset();
+    this.room?.setSelf({ name: this.roomName, mode: this.mode });
+    this.room?.setTrackLength(this.trackLength);
+    this.renderRoom();
   }
 
   /** Show the chart and leaderboard belonging to the mode now on screen. */

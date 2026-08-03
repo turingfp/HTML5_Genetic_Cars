@@ -335,6 +335,7 @@ function params(over: Partial<GAParams> = {}): GAParams {
     goal: DEFAULT_GOAL,
     diversityPressure: 0,
     immigrants: 0,
+    migrants: 0,
     ...over,
   };
 }

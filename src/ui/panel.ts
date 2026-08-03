@@ -21,8 +21,6 @@ export interface PanelCallbacks {
   onCrossover: (mode: CrossoverMode) => void;
   onDiversity: (pressure: number) => void;
   onImmigrants: (count: number) => void;
-  onRebuildTrack: (seed: string) => void;
-  onRandomSeed: () => void;
   onResetPopulation: () => void;
   onToggleReplay: () => void;
   onFollowLeader: () => void;
@@ -40,7 +38,6 @@ export class Panel {
   private speedButtons = new Map<Speed, HTMLButtonElement>();
   private pauseButton: HTMLButtonElement;
   private replayButton: HTMLButtonElement;
-  private seedInput: HTMLInputElement;
 
   readonly mutationRate: HTMLInputElement;
   readonly mutationSize: HTMLInputElement;
@@ -120,18 +117,6 @@ export class Panel {
       callbacks.onCrossover(this.crossover.value as CrossoverMode),
     );
 
-    this.seedInput = required<HTMLInputElement>('seed-input');
-    required('rebuild').addEventListener('click', () => {
-      const seed = this.seedInput.value.trim();
-      if (seed) callbacks.onRebuildTrack(seed);
-    });
-    this.seedInput.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      const seed = this.seedInput.value.trim();
-      if (seed) callbacks.onRebuildTrack(seed);
-    });
-
-    required('randomize').addEventListener('click', callbacks.onRandomSeed);
     required('reset').addEventListener('click', callbacks.onResetPopulation);
     required('follow').addEventListener('click', callbacks.onFollowLeader);
     required('share').addEventListener('click', callbacks.onShare);
@@ -150,10 +135,6 @@ export class Panel {
 
   setReplaying(replaying: boolean): void {
     this.replayButton.textContent = replaying ? 'Back to evolving' : 'Watch best run';
-  }
-
-  setSeed(seed: string): void {
-    this.seedInput.value = seed;
   }
 
   /** Reflect restored settings into the inputs without firing callbacks. */

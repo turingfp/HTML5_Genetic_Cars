@@ -68,18 +68,35 @@ export function saveHallOfFame(mode: string, entries: HallOfFameEntry[]): void {
 
 /** The track seed from the URL, if the page was opened from a shared link. */
 export function seedFromUrl(): string | null {
+  return paramFromUrl('seed');
+}
+
+/**
+ * The full track code from the URL.
+ *
+ * A link now carries the whole design rather than only its seed, so a shared
+ * track arrives with its gaps and ramps intact. `seed` is still read, because
+ * links made before codes existed should keep working.
+ */
+export function trackCodeFromUrl(): string | null {
+  return paramFromUrl('track');
+}
+
+function paramFromUrl(name: string): string | null {
   try {
-    return new URL(window.location.href).searchParams.get('seed');
+    return new URL(window.location.href).searchParams.get(name);
   } catch {
     return null;
   }
 }
 
-/** Reflect the current seed in the address bar without reloading. */
-export function syncSeedToUrl(seed: string): void {
+/** Reflect the current track in the address bar without reloading. */
+export function syncSeedToUrl(seed: string, code?: string): void {
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('seed', seed);
+    if (code) url.searchParams.set('track', code);
+    else url.searchParams.delete('track');
     window.history.replaceState(null, '', url.toString());
   } catch {
     // Some embedding contexts forbid history writes; sharing just needs a copy.

@@ -62,6 +62,7 @@
                 <span class="hud-value" data-readout="sps">0</span>
               </div>
             </div>
+            <div class="medal-bar" id="medals" aria-label="Progress along the track"></div>
             <div class="stage-banner" id="banner" hidden></div>
           </div>
 
@@ -270,18 +271,14 @@
             </div>
           </details>
 
+          <details open>
+            <summary><h2>Track</h2></summary>
+            <div class="details-body" id="track-editor"></div>
+          </details>
+
           <details>
-            <summary><h2>Track seed</h2></summary>
-            <div class="details-body">
-              <div class="seed-row">
-                <input id="seed-input" type="text" spellcheck="false" autocomplete="off" />
-                <button type="button" id="randomize" class="ghost-button" title="Random seed">
-                  &#10683;
-                </button>
-              </div>
-              <button type="button" id="rebuild" class="secondary-button">Build this track</button>
-              <p class="hint">The same seed always builds the same course, so runs compare.</p>
-            </div>
+            <summary><h2>Room</h2></summary>
+            <div class="details-body" id="room-panel"></div>
           </details>
         </section>
 

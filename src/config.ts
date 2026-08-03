@@ -54,6 +54,17 @@ export const DEFAULT_IMMIGRANTS = 0;
 export const MAX_IMMIGRANTS = 8;
 
 /**
+ * Cars per generation taken from other people in the room.
+ *
+ * Two by default, which only does anything once you have joined a room: with
+ * nobody to take from, the slot breeds a child as usual. Two out of twenty is
+ * enough for a foreign lineage to get a foothold and not so many that your own
+ * search stops being yours.
+ */
+export const DEFAULT_MIGRANTS = 2;
+export const MAX_MIGRANTS = 8;
+
+/**
  * How far a chassis corner may swing inside its own sector, as a fraction of
  * half a sector.
  *

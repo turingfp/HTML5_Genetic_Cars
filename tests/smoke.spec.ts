@@ -161,26 +161,26 @@ test('pause halts the simulation and resume restarts it', async ({ page }) => {
 
 test('building a track from a seed updates the URL and restarts', async ({ page }) => {
   await open(page);
-  await openSection(page, 'Track seed');
-  await page.fill('#seed-input', 'moon-buggy');
-  await page.getByRole('button', { name: 'Build this track' }).click();
+  // Seeds are restricted to letters and digits now, because they travel inside
+  // track codes and URLs.
+  await page.fill('#seed-input', 'moonbuggy');
+  await page.getByRole('button', { name: 'Drive this track' }).click();
 
-  await expect(page).toHaveURL(/seed=moon-buggy/);
+  await expect(page).toHaveURL(/seed=moonbuggy/);
   const state = await debug(page);
-  expect(state.seed).toBe('moon-buggy');
+  expect(state.seed).toBe('moonbuggy');
   expect(state.generation).toBe(0);
 
   // The same seed must rebuild the same course after a reload.
   const before = state.trackSignature;
-  await open(page, '/?seed=moon-buggy');
+  await open(page, '/?seed=moonbuggy');
   const after = await debug(page);
-  expect(after.seed).toBe('moon-buggy');
+  expect(after.seed).toBe('moonbuggy');
   expect(after.trackSignature).toBe(before);
 
   // A different seed must produce a different course.
-  await openSection(page, 'Track seed');
-  await page.fill('#seed-input', 'ice-rink');
-  await page.getByRole('button', { name: 'Build this track' }).click();
+  await page.fill('#seed-input', 'icerink');
+  await page.getByRole('button', { name: 'Drive this track' }).click();
   expect((await debug(page)).trackSignature).not.toBe(before);
 });
 

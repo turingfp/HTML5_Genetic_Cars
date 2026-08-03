@@ -13,6 +13,7 @@ import {
   DEFAULT_DIVERSITY_PRESSURE,
   DEFAULT_ELITE_COUNT,
   DEFAULT_IMMIGRANTS,
+  DEFAULT_MIGRANTS,
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
@@ -43,7 +44,14 @@ import {
 import type { CarDef } from '../ga/genome';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import { ReplayRecorder, type Pose } from '../replay/recorder';
-import { generateTrack, slopeProbes, type SlopeProbes, type TrackDef } from './track';
+import {
+  generateTrack,
+  generateTrackFromSpec,
+  slopeProbes,
+  type SlopeProbes,
+  type TrackDef,
+} from './track';
+import { defaultSpec, type TrackSpec } from '../track/spec';
 import { Car } from './car';
 
 export interface CarSnapshot {
@@ -133,6 +141,14 @@ export class Simulation {
   private runSeed: string;
 
   onCarDeath: ((car: Car) => void) | null = null;
+
+  /**
+   * Where migrant cars come from, when a room is connected.
+   *
+   * A function rather than a reference to the room, so the simulation knows
+   * nothing about networking and the island model can be tested offline.
+   */
+  migrantSource: (() => CarDef | null) | null = null;
   onGenerationEnd: ((scores: CarScore[], generation: number) => void) | null = null;
 
   constructor(options: SimulationOptions = {}) {
@@ -150,6 +166,7 @@ export class Simulation {
       goal: DEFAULT_GOAL,
       diversityPressure: DEFAULT_DIVERSITY_PRESSURE,
       immigrants: DEFAULT_IMMIGRANTS,
+      migrants: DEFAULT_MIGRANTS,
       ...options.params,
     };
 
@@ -295,7 +312,16 @@ export class Simulation {
     const finished = this.scores;
     this.onGenerationEnd?.(finished, this.generation);
     this.generation++;
-    this.spawn(nextGeneration(finished, this.params, this.rng, undefined, this.nextLineage));
+    this.spawn(
+      nextGeneration(
+        finished,
+        this.params,
+        this.rng,
+        undefined,
+        this.nextLineage,
+        this.migrantSource,
+      ),
+    );
   }
 
   /** Start over with a fresh random population on the same track. */
@@ -308,8 +334,13 @@ export class Simulation {
 
   /** Build a new track and start over. */
   setTrack(seed: string): void {
+    this.setTrackSpec(defaultSpec(seed));
+  }
+
+  /** Build the track this design describes and start over. */
+  setTrackSpec(spec: TrackSpec): void {
     this.clearCars();
-    this.track = generateTrack(seed);
+    this.track = generateTrackFromSpec(spec);
     this.buildTrackBodies();
     this.generation = 0;
     this.nextLineage = 0;

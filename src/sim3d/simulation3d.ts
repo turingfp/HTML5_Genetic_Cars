@@ -10,6 +10,7 @@ import {
   DEFAULT_DIVERSITY_PRESSURE,
   DEFAULT_ELITE_COUNT,
   DEFAULT_IMMIGRANTS,
+  DEFAULT_MIGRANTS,
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
@@ -37,7 +38,13 @@ import {
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
 import { slopeProbes, surfaceIndexAt, type SlopeProbes } from '../sim/track';
-import { generateTrack3D, roadCrossSections, type Track3D } from './track3d';
+import {
+  generateTrack3D,
+  generateTrack3DFromSpec,
+  roadCrossSections,
+  type Track3D,
+} from './track3d';
+import { defaultSpec, type TrackSpec } from '../track/spec';
 import { Car3D } from './car3d';
 import type { Box3DBody, Box3DWorld, Vec3 } from './box3d';
 import { loadBox3D } from './box3d';
@@ -83,6 +90,9 @@ export class Simulation3D {
   private rng: Rng;
 
   onCarDeath: ((car: Car3D) => void) | null = null;
+
+  /** Where migrant cars come from, when a room is connected. See Simulation. */
+  migrantSource: (() => Car3DDef | null) | null = null;
   onGenerationEnd: ((scores: CarScore<Car3DDef>[], generation: number) => void) | null = null;
 
   /** Box3D has to compile its WebAssembly before a world can exist. */
@@ -106,6 +116,7 @@ export class Simulation3D {
       goal: DEFAULT_GOAL,
       diversityPressure: DEFAULT_DIVERSITY_PRESSURE,
       immigrants: DEFAULT_IMMIGRANTS,
+      migrants: DEFAULT_MIGRANTS,
       ...options.params,
     };
 
@@ -259,7 +270,16 @@ export class Simulation3D {
     const finished = this.scores;
     this.onGenerationEnd?.(finished, this.generation);
     this.generation++;
-    this.spawn(nextGeneration(finished, this.params, this.rng, car3DOps, this.nextLineage));
+    this.spawn(
+      nextGeneration(
+        finished,
+        this.params,
+        this.rng,
+        car3DOps,
+        this.nextLineage,
+        this.migrantSource,
+      ),
+    );
   }
 
   resetPopulation(): void {
@@ -270,8 +290,13 @@ export class Simulation3D {
   }
 
   setTrack(seed: string): void {
+    this.setTrackSpec(defaultSpec(seed));
+  }
+
+  /** Build the track this design describes and start over. */
+  setTrackSpec(spec: TrackSpec): void {
     this.clearCars();
-    this.track = generateTrack3D(seed);
+    this.track = generateTrack3DFromSpec(spec);
     this.buildRoad();
     this.generation = 0;
     this.nextLineage = 0;

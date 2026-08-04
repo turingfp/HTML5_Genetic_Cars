@@ -581,11 +581,13 @@ export class App {
     const sorted = scores.slice().sort((a, b) => b.score - a.score);
     const half = Math.max(1, Math.ceil(sorted.length / 2));
 
+    const archive = this.mode === '3d' && this.sim3d ? this.sim3d.archive : this.sim.archive;
     this.current.history.push({
       generation,
       best: sorted[0]!.score,
       eliteAverage: sorted.slice(0, half).reduce((a, s) => a + s.score, 0) / half,
       average: sorted.reduce((a, s) => a + s.score, 0) / sorted.length,
+      qd: archive.qdScore,
     });
     this.chart.draw(this.current.history);
 

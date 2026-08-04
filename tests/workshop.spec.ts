@@ -116,6 +116,16 @@ test.describe('finding the features', () => {
     }
   });
 
+  test('the map of designs is on the page and counts its niches', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('#archive')).toBeVisible();
+    // The readout may still say zero this early; the shape of it is the claim.
+    await expect(page.locator('[data-readout=archive]')).toHaveText(/^\d+ of 144$/);
+    // And the search toggle exists with both searches on offer.
+    const options = page.locator('#search option');
+    await expect(options).toHaveCount(2);
+  });
+
   test('the controls sit near the top on a phone, not below everything', async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await open(page);

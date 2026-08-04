@@ -33,6 +33,7 @@ import { BRAIN_NODE_COUNT, BRAIN_RECURRENT } from '../ga/brain';
 import {
   DEFAULT_CROSSOVER,
   DEFAULT_GOAL,
+  DEFAULT_SEARCH,
   DEFAULT_SELECTION,
   fitnessOf,
   nextGeneration,
@@ -41,7 +42,8 @@ import {
   type CarScore,
   type GAParams,
 } from '../ga/evolution';
-import type { CarDef } from '../ga/genome';
+import { describeCar, EliteArchive } from '../ga/archive';
+import { cloneCar, type CarDef } from '../ga/genome';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import { ReplayRecorder, type Pose } from '../replay/recorder';
 import {
@@ -181,6 +183,9 @@ export class Simulation {
    * nothing about networking and the island model can be tested offline.
    */
   migrantSource: (() => CarDef | null) | null = null;
+
+  /** Best car of every body shape this session. See the 3D twin for why. */
+  readonly archive = new EliteArchive<CarDef>(describeCar, cloneCar);
   onGenerationEnd: ((scores: CarScore[], generation: number) => void) | null = null;
 
   constructor(options: SimulationOptions = {}) {
@@ -194,6 +199,7 @@ export class Simulation {
       mutationSize: DEFAULT_MUTATION_SIZE,
       eliteCount: DEFAULT_ELITE_COUNT,
       selection: DEFAULT_SELECTION,
+      search: DEFAULT_SEARCH,
       crossoverMode: DEFAULT_CROSSOVER,
       goal: DEFAULT_GOAL,
       diversityPressure: DEFAULT_DIVERSITY_PRESSURE,
@@ -337,6 +343,7 @@ export class Simulation {
       isElite: car.isElite,
       lineage: car.lineage,
     });
+    this.archive.offer(car.def, fitnessOf(run, this.params.goal), this.generation);
     this.onCarDeath?.(car);
   }
 
@@ -351,6 +358,7 @@ export class Simulation {
       undefined,
       this.nextLineage,
       this.migrantSource,
+      this.archive,
     );
     this.placePending(entries, entries.filter((e) => e.isElite).length);
     this.spawn(entries);
@@ -371,6 +379,7 @@ export class Simulation {
 
   /** Build the track this design describes and start over. */
   setTrackSpec(spec: TrackSpec): void {
+    this.archive.clear();
     this.clearCars();
     this.track = generateTrackFromSpec(spec);
     this.buildTrackBodies();

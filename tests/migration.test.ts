@@ -17,6 +17,7 @@ import {
   type CarScore,
   type GAParams,
 } from '../src/ga/evolution';
+import { DEFAULT_SEARCH } from '../src/ga/evolution';
 import { randomCar, type CarDef } from '../src/ga/genome';
 
 function params(over: Partial<GAParams> = {}): GAParams {
@@ -26,6 +27,7 @@ function params(over: Partial<GAParams> = {}): GAParams {
     mutationSize: 1,
     eliteCount: 1,
     selection: DEFAULT_SELECTION,
+  search: DEFAULT_SEARCH,
     crossoverMode: DEFAULT_CROSSOVER,
     goal: DEFAULT_GOAL,
     diversityPressure: 0,

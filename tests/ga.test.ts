@@ -18,6 +18,7 @@ import { cloneCar, crossover, mutate, randomCar, type CarDef } from '../src/ga/g
 import {
   DEFAULT_CROSSOVER,
   DEFAULT_GOAL,
+  DEFAULT_SEARCH,
   DEFAULT_SELECTION,
   carOps,
   countLineages,
@@ -331,6 +332,7 @@ function params(over: Partial<GAParams> = {}): GAParams {
     mutationSize: 1,
     eliteCount: 1,
     selection: DEFAULT_SELECTION,
+    search: DEFAULT_SEARCH,
     crossoverMode: DEFAULT_CROSSOVER,
     goal: DEFAULT_GOAL,
     diversityPressure: 0,

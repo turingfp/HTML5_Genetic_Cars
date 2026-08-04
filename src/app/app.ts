@@ -51,11 +51,13 @@ import { RoomPanel } from '../ui/roompanel';
 import { TrackEditor } from '../ui/trackeditor';
 import { Workshop } from '../ui/workshop';
 import { rngFromSeed } from '../core/rng';
-import type { CarScore, GAParams } from '../ga/evolution';
+import type { CarScore, GAParams, SearchMode } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
 import { randomCar3D, type Car3DDef } from '../ga/genome3d';
 import { BrainView } from '../render/brainview';
 import { Chart, type GenerationStats } from '../render/chart';
+import { ArchiveView } from '../render/archiveview';
+import type { EliteArchive } from '../ga/archive';
 import { GenePool, type GenePoolCar } from '../render/genepool';
 import { Minimap } from '../render/minimap';
 import { Renderer } from '../render/renderer';
@@ -126,6 +128,7 @@ export class App {
   private chart: Chart;
   private brainView: BrainView;
   private genePool: GenePool;
+  private archiveView: ArchiveView<CarDef | Car3DDef>;
   private healthStrip: HealthStrip;
   private leaderboard: Leaderboard;
   private readouts: Readouts;
@@ -217,6 +220,7 @@ export class App {
         migrants: clamp(stored.migrants ?? DEFAULT_MIGRANTS, 0, MAX_MIGRANTS),
         ...(stored.goal ? { goal: stored.goal } : {}),
         ...(stored.selection ? { selection: stored.selection } : {}),
+        ...(stored.search === 'illuminate' ? { search: stored.search } : {}),
         ...(stored.crossoverMode ? { crossoverMode: stored.crossoverMode } : {}),
       },
     });
@@ -230,6 +234,8 @@ export class App {
     this.chart = new Chart(element<HTMLCanvasElement>('chart'));
     this.brainView = new BrainView(element<HTMLCanvasElement>('brain'));
     this.genePool = new GenePool(element<HTMLCanvasElement>('genepool'));
+    this.archiveView = new ArchiveView<CarDef | Car3DDef>(element<HTMLCanvasElement>('archive'));
+    this.archiveView.onPick = (def) => this.raceFromArchive(def);
     this.healthStrip = new HealthStrip(element<HTMLCanvasElement>('health'));
     this.leaderboard = new Leaderboard(element('leaderboard'));
     this.readouts = new Readouts(document);
@@ -253,6 +259,7 @@ export class App {
       onPopulationSize: (size) => this.setParam('populationSize', size),
       onGoal: (goal) => this.setParam('goal', goal),
       onSelection: (method) => this.setParam('selection', method),
+      onSearch: (mode) => this.setSearch(mode),
       onCrossover: (mode) => this.setParam('crossoverMode', mode),
       onDiversity: (pressure) => this.setParam('diversityPressure', pressure),
       onImmigrants: (count) => this.setParam('immigrants', count),
@@ -437,6 +444,13 @@ export class App {
         }),
       ),
     );
+    this.drawArchive(this.sim.archive, this.snapshot.generation);
+  }
+
+  /** The map of designs, plus its filled-cell readout. */
+  private drawArchive(archive: EliteArchive<CarDef> | EliteArchive<Car3DDef>, generation: number): void {
+    this.archiveView.draw(archive as EliteArchive<CarDef | Car3DDef>, generation);
+    this.readouts.set('archive', `${archive.filled} of ${archive.cells.length}`);
   }
 
   /**
@@ -496,6 +510,7 @@ export class App {
         }),
       ),
     );
+    this.drawArchive(sim.archive, this.snapshot3d.generation);
   }
 
   private markersFrom2D(): MinimapMarker[] {
@@ -669,6 +684,22 @@ export class App {
     this.persist();
   }
 
+  /**
+   * Switch between the hill-climbing GA and MAP-Elites.
+   *
+   * Just a parameter, but worth a banner: the effect is a map filling in
+   * rather than a number going up, and someone who flips it deserves to be
+   * told where to look.
+   */
+  private setSearch(mode: SearchMode): void {
+    this.setParam('search', mode);
+    this.flashBanner(
+      mode === 'illuminate'
+        ? 'Illuminating: parents now come from the map of designs below the chart.'
+        : 'Climbing: parents are the current winners again.',
+    );
+  }
+
   private setSpeed(speed: Speed): void {
     this.loop.speed = speed;
     if (this.loop.paused) this.setPaused(false);
@@ -809,6 +840,21 @@ export class App {
    * are taken from a random 3D car rather than invented: a body someone drew
    * flat says nothing about how wide it should be.
    */
+  /**
+   * A clicked cell of the map joins the next generation.
+   *
+   * The def is already the right shape for the mode whose archive drew it,
+   * since each simulation keeps its own map.
+   */
+  private raceFromArchive(def: CarDef | Car3DDef): void {
+    if (this.mode === '3d' && this.sim3d) {
+      this.sim3d.enqueue(structuredClone(def) as Car3DDef);
+    } else {
+      this.sim.enqueue(structuredClone(def) as CarDef);
+    }
+    this.flashBanner('That design is back in. It races with the next generation.');
+  }
+
   private raceHandBuilt(def: CarDef): void {
     if (this.mode === '3d' && this.sim3d) {
       const shape = randomCar3D(rngFromSeed(String(Math.random())));

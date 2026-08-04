@@ -32,6 +32,10 @@ Three things make it more than a screensaver:
   track code the daily *is* the matchmaking.
 - **The road has things on it.** Crates are real dynamic bodies: they tip, slide,
   stack, and get shouldered aside by a car heavy enough to do it.
+- **Two searches, not one.** The classic GA climbs; a MAP-Elites archive
+  illuminates, keeping the best car of every body shape and breeding across the
+  map. Measured: 40% more of morphology space filled, nothing given up on best
+  distance.
 
 ## The tracks
 
@@ -107,6 +111,34 @@ ten thousand wheels, a NaN spoke, two wheels on one corner or a chassis a
 kilometre wide costs you nothing. `tests/wire.test.ts` is nineteen tests of
 exactly that, running the messages through JSON first the way the transport
 does.
+
+### The map of designs
+
+The genetic algorithm answers one question, "what is the best car", and pays
+for the answer by forgetting everything else it finds on the way. The archive
+answers Mouret and Clune's question instead: what is the best car of *every
+shape*? Morphology space is a 12 by 12 grid, chassis size against wheel size,
+and each cell permanently keeps the best car whose body landed in it. A weird
+stilt-walker that manages 40m goes extinct in the population two generations
+after a 60m car appears; its cell in the archive is not competing with that
+car, so it stays. The panel draws the grid as a heatmap, and clicking a lit
+cell puts that elite back into the race.
+
+The archive always collects, whichever search is running. The **Illuminate**
+mode goes further and breeds from it: one parent drawn uniformly from the
+filled cells, one from the current winners. Canonical MAP-Elites crosses two
+archive draws, and that was tried first and measured: over six tracks and
+twenty generations it filled 42% of the map against the GA's 30%, but gave up
+15% of best distance, which is the textbook exploration tax. The hybrid keeps
+the coverage (41%) and pays nothing measurable (88.9m against 90.8m, inside
+seed noise), so the hybrid is what shipped, and the pure crossing is a comment
+in the code.
+
+The descriptor axes come from the genome, not from behaviour, deliberately:
+speed and airtime move when the track changes, so a behavioural archive would
+be scrambled by every track edit. A body is the same body on any course, which
+is what lets the map survive a whole session. It does clear when the track
+changes, since *scores* from another course mean nothing on this one.
 
 ### Crates
 

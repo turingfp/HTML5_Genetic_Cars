@@ -7,7 +7,7 @@
  */
 
 import { SPEEDS, type Speed } from '../config';
-import type { CrossoverMode, FitnessGoal, SelectionMethod } from '../ga/evolution';
+import type { CrossoverMode, FitnessGoal, SearchMode, SelectionMethod } from '../ga/evolution';
 
 export interface PanelCallbacks {
   onSpeed: (speed: Speed) => void;
@@ -18,6 +18,7 @@ export interface PanelCallbacks {
   onPopulationSize: (size: number) => void;
   onGoal: (goal: FitnessGoal) => void;
   onSelection: (method: SelectionMethod) => void;
+  onSearch: (mode: SearchMode) => void;
   onCrossover: (mode: CrossoverMode) => void;
   onDiversity: (pressure: number) => void;
   onImmigrants: (count: number) => void;
@@ -48,6 +49,7 @@ export class Panel {
 
   private goal: HTMLSelectElement;
   private selection: HTMLSelectElement;
+  private search: HTMLSelectElement;
   private crossover: HTMLSelectElement;
 
   constructor(callbacks: PanelCallbacks) {
@@ -112,6 +114,11 @@ export class Panel {
       callbacks.onSelection(this.selection.value as SelectionMethod),
     );
 
+    this.search = required<HTMLSelectElement>('search');
+    this.search.addEventListener('change', () =>
+      callbacks.onSearch(this.search.value as SearchMode),
+    );
+
     this.crossover = required<HTMLSelectElement>('crossover');
     this.crossover.addEventListener('change', () =>
       callbacks.onCrossover(this.crossover.value as CrossoverMode),
@@ -158,6 +165,7 @@ export class Panel {
     immigrants: number;
     goal: FitnessGoal;
     selection: SelectionMethod;
+    search: SearchMode;
     crossoverMode: CrossoverMode;
   }): void {
     this.mutationRate.value = String(Math.round(values.mutationRate * 100));
@@ -167,6 +175,7 @@ export class Panel {
     this.diversity.value = String(Math.round(values.diversityPressure * 100));
     this.immigrants.value = String(values.immigrants);
     this.goal.value = values.goal;
+    this.search.value = values.search;
     this.selection.value = values.selection;
     this.crossover.value = values.crossoverMode;
     this.syncLabels();

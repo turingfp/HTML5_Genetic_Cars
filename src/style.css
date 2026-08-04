@@ -604,6 +604,15 @@ summary:hover h2 {
   background: rgb(8 13 24 / 60%);
 }
 
+#archive {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgb(8 13 24 / 60%);
+}
+
 #genepool {
   width: 100%;
   height: 116px;

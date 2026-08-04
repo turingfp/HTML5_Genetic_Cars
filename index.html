@@ -127,6 +127,21 @@
           <canvas id="chart" aria-label="Fitness by generation"></canvas>
         </section>
 
+        <section class="panel archive-panel">
+          <div class="panel-head">
+            <h2>Map of designs</h2>
+            <span class="panel-note" data-readout="archive">0 of 144</span>
+          </div>
+          <canvas id="archive" aria-label="Best car of every body shape"></canvas>
+          <p class="hint">
+            Every square is a kind of body: small to large left to right by wheel, bottom to top
+            by chassis. A lit square holds the best car of that shape found this session, warm
+            colours scoring higher, a white ring on recent finds. Click one to put that car back
+            in the race. This is a MAP-Elites archive, and it keeps designs the leaderboard
+            forgets.
+          </p>
+        </section>
+
         <section class="panel map-panel">
           <h2>Course map</h2>
           <canvas id="minimap" aria-label="Course overview"></canvas>
@@ -207,6 +222,21 @@
           <details>
             <summary><h2>Selection</h2></summary>
             <div class="details-body">
+              <div class="control">
+                <label for="search">Search</label>
+                <select id="search">
+                  <option value="climb">Climb: breed the winners</option>
+                  <option value="illuminate">Illuminate: breed across the map</option>
+                </select>
+                <p class="hint">
+                  Climb is the classic genetic algorithm. Illuminate is MAP-Elites: one parent
+                  comes from the archive of body shapes below instead of from the current winners,
+                  so the search spreads across the whole map of designs rather than collapsing
+                  onto one. Measured over six tracks it fills about 40% more of the map and gives
+                  up nothing on best distance.
+                </p>
+              </div>
+
               <div class="control">
                 <label for="goal">Selected for</label>
                 <select id="goal">
@@ -342,6 +372,14 @@
               browsers agree on it with nothing in between them, and since a room is keyed to a
               track code the daily is also the matchmaking: open the page, press join, and you
               are in with whoever else is driving it. It resets at midnight UTC.
+            </p>
+            <p>
+              The Map of designs panel is a MAP-Elites archive, out of the quality diversity
+              literature. Every square is a kind of body, and each keeps the best car of that
+              shape ever seen this session, so designs the leaderboard forgets stay findable and
+              clickable. Switch Search to Illuminate and evolution starts breeding across the
+              map instead of only from the winners: measured over six tracks that fills about
+              40% more of the space and costs nothing on best distance.
             </p>
             <p>
               Turn Crates up and the road gets cargo on it. They are not scenery: each one is a

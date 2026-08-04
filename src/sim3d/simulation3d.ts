@@ -30,6 +30,7 @@ import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
 import {
   DEFAULT_CROSSOVER,
   DEFAULT_GOAL,
+  DEFAULT_SEARCH,
   DEFAULT_SELECTION,
   fitnessOf,
   nextGeneration,
@@ -40,6 +41,7 @@ import {
 } from '../ga/evolution';
 import { car3DOps, type Car3DDef } from '../ga/genome3d';
 import { Replay3DRecorder } from '../replay/recorder3d';
+import { describeCar3D, EliteArchive } from '../ga/archive';
 import { buildCrates } from './debris';
 import { slopeProbes, surfaceIndexAt, type SlopeProbes } from '../sim/track';
 import {
@@ -138,6 +140,14 @@ export class Simulation3D {
 
   /** Where migrant cars come from, when a room is connected. See Simulation. */
   migrantSource: (() => Car3DDef | null) | null = null;
+
+  /**
+   * The best car of every body shape found this session, kept whichever
+   * search is running so switching to illuminate starts from what climb
+   * already learned. Cleared with the track, since scores from another course
+   * mean nothing on this one.
+   */
+  readonly archive = new EliteArchive<Car3DDef>(describeCar3D, car3DOps.clone);
   onGenerationEnd: ((scores: CarScore<Car3DDef>[], generation: number) => void) | null = null;
 
   /** Box3D has to compile its WebAssembly before a world can exist. */
@@ -157,6 +167,7 @@ export class Simulation3D {
       mutationSize: DEFAULT_MUTATION_SIZE,
       eliteCount: DEFAULT_ELITE_COUNT,
       selection: DEFAULT_SELECTION,
+      search: DEFAULT_SEARCH,
       crossoverMode: DEFAULT_CROSSOVER,
       goal: DEFAULT_GOAL,
       diversityPressure: DEFAULT_DIVERSITY_PRESSURE,
@@ -334,6 +345,7 @@ export class Simulation3D {
       isElite: car.isElite,
       lineage: car.lineage,
     });
+    this.archive.offer(car.def, fitnessOf(run, this.params.goal), this.generation);
     this.onCarDeath?.(car);
   }
 
@@ -348,6 +360,7 @@ export class Simulation3D {
       car3DOps,
       this.nextLineage,
       this.migrantSource,
+      this.archive,
     );
     this.placePending(entries, entries.filter((e) => e.isElite).length);
     this.spawn(entries);
@@ -367,6 +380,7 @@ export class Simulation3D {
   /** Build the track this design describes and start over. */
   setTrackSpec(spec: TrackSpec): void {
     this.clearCars();
+    this.archive.clear();
     this.track = generateTrack3DFromSpec(spec);
     this.buildRoad();
     this.generation = 0;

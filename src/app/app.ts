@@ -236,6 +236,9 @@ export class App {
     this.genePool = new GenePool(element<HTMLCanvasElement>('genepool'));
     this.archiveView = new ArchiveView<CarDef | Car3DDef>(element<HTMLCanvasElement>('archive'));
     this.archiveView.onPick = (def) => this.raceFromArchive(def);
+    // The hover preview draws the flat silhouette either way: it is the shape
+    // the descriptor axes measure, and a 3D car is that silhouette extruded.
+    this.archiveView.toSilhouette = (def) => ('base' in def ? def.base : def);
     this.healthStrip = new HealthStrip(element<HTMLCanvasElement>('health'));
     this.leaderboard = new Leaderboard(element('leaderboard'));
     this.readouts = new Readouts(document);
@@ -450,7 +453,8 @@ export class App {
   /** The map of designs, plus its filled-cell readout. */
   private drawArchive(archive: EliteArchive<CarDef> | EliteArchive<Car3DDef>, generation: number): void {
     this.archiveView.draw(archive as EliteArchive<CarDef | Car3DDef>, generation);
-    this.readouts.set('archive', `${archive.filled} of ${archive.cells.length}`);
+    this.readouts.set('archive', String(archive.filled));
+    this.readouts.set('qd', String(Math.round(archive.qdScore)));
   }
 
   /**

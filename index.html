@@ -104,6 +104,37 @@
             selection locking in a weight that keeps paying off.
           </p>
         </section>
+        <section class="panel archive-panel">
+          <div class="panel-head">
+            <h2>Map of designs</h2>
+            <span class="panel-note">MAP-Elites archive · hover to inspect, click to race</span>
+          </div>
+          <div class="archive-body">
+            <canvas id="archive" aria-label="Best car of every body shape"></canvas>
+            <div class="archive-side">
+              <div class="metric">
+                <span class="metric-value" data-readout="archive">0</span>
+                <span class="metric-label">of 144 niches filled</span>
+              </div>
+              <div class="metric">
+                <span class="metric-value" data-readout="qd">0</span>
+                <span class="metric-label">QD score, all cells summed</span>
+              </div>
+              <p class="hint">
+                Every square is a kind of body: wheels grow to the right, chassis grows upward,
+                and each lit square permanently keeps the best car of that shape, warm colours
+                scoring higher, a white ring on recent finds. The leaderboard forgets everything
+                that is not winning; this map cannot, because a car only ever competes with its
+                own shape. Hover a square to see its car, click to put it back in the race.
+              </p>
+              <p class="hint">
+                Best-so-far can sit flat for fifty generations while the map is still filling.
+                The QD score is how that hidden progress is measured: it rises when a new shape
+                works at all, or an old one gets better.
+              </p>
+            </div>
+          </div>
+        </section>
         <section class="panel hall-panel">
           <div class="panel-head">
             <h2>Hall of fame</h2>
@@ -125,21 +156,6 @@
         <section class="panel chart-panel">
           <h2>Fitness</h2>
           <canvas id="chart" aria-label="Fitness by generation"></canvas>
-        </section>
-
-        <section class="panel archive-panel">
-          <div class="panel-head">
-            <h2>Map of designs</h2>
-            <span class="panel-note" data-readout="archive">0 of 144</span>
-          </div>
-          <canvas id="archive" aria-label="Best car of every body shape"></canvas>
-          <p class="hint">
-            Every square is a kind of body: small to large left to right by wheel, bottom to top
-            by chassis. A lit square holds the best car of that shape found this session, warm
-            colours scoring higher, a white ring on recent finds. Click one to put that car back
-            in the race. This is a MAP-Elites archive, and it keeps designs the leaderboard
-            forgets.
-          </p>
         </section>
 
         <section class="panel map-panel">

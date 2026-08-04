@@ -121,8 +121,14 @@ shape*? Morphology space is a 12 by 12 grid, chassis size against wheel size,
 and each cell permanently keeps the best car whose body landed in it. A weird
 stilt-walker that manages 40m goes extinct in the population two generations
 after a 60m car appears; its cell in the archive is not competing with that
-car, so it stays. The panel draws the grid as a heatmap, and clicking a lit
-cell puts that elite back into the race.
+car, so it stays. The panel draws the grid as a heatmap with the
+axes labelled, hovering a lit cell draws that niche's actual elite beside the
+cursor, and clicking it puts the car back into the race. Beside the map sit the
+two numbers quality-diversity work reports: niches filled, and the QD-score of
+Pugh et al., every cell's fitness summed. Best-so-far can flatline for fifty
+generations while the map is still improving; the QD-score is how that hidden
+progress is measured, because it rises when a new shape works at all or an old
+one gets better.
 
 The archive always collects, whichever search is running. The **Illuminate**
 mode goes further and breeds from it: one parent drawn uniformly from the

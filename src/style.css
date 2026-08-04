@@ -604,6 +604,61 @@ summary:hover h2 {
   background: rgb(8 13 24 / 60%);
 }
 
+.archive-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 14px;
+  position: relative;
+}
+
+.archive-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.metric-value {
+  font-family: ui-monospace, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright, #e2e8f0);
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--text-dim, #94a3b8);
+}
+
+.archive-preview[hidden] {
+  /* The class sets display: flex, which outranks the browser's own
+     [hidden] rule; without this the empty card sits over the map forever. */
+  display: none;
+}
+
+.archive-preview {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgb(8 13 24 / 92%);
+  pointer-events: none;
+  font-size: 11px;
+  color: var(--text-dim, #94a3b8);
+  white-space: nowrap;
+}
+
 #archive {
   width: 100%;
   aspect-ratio: 1;
@@ -611,6 +666,12 @@ summary:hover h2 {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: rgb(8 13 24 / 60%);
+}
+
+@media (max-width: 640px) {
+  .archive-body {
+    grid-template-columns: 1fr;
+  }
 }
 
 #genepool {

@@ -127,6 +127,21 @@ export class EliteArchive<T> {
     return this.filledCount / this.cells.length;
   }
 
+  /**
+   * The QD-score: every cell's fitness summed.
+   *
+   * The standard scalar for quality-diversity searches, from Pugh et al. It
+   * only rises, and it rises for both of the things this search values: a new
+   * niche filled, or an old niche improved. Best-so-far can flatline for
+   * fifty generations while the map is still visibly getting better; this
+   * number is how that progress is usually reported.
+   */
+  get qdScore(): number {
+    let sum = 0;
+    for (const cell of this.cells) if (cell) sum += Math.max(0, cell.score);
+    return sum;
+  }
+
   get bestScore(): number {
     let best = -Infinity;
     for (const cell of this.cells) if (cell && cell.score > best) best = cell.score;

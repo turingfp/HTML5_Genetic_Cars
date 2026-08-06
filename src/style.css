@@ -149,15 +149,31 @@ h3 {
 }
 
 @media (max-width: 1040px) {
+  /* One column, with the columns dissolved so panels can interleave. The
+     desktop grid put the whole settings stack between the stage and the
+     science, which on a phone meant scrolling past every slider before the
+     first genuinely novel thing appeared. Order here is the pitch: the world,
+     the map of designs, the knobs you touch, then the ambient readouts. */
   .app {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "header"
-      "stage"
-      "side"
-      "main"
-      "about";
+    display: flex;
+    flex-direction: column;
   }
+
+  .column-main,
+  .column-side {
+    display: contents;
+  }
+
+  .app-header { order: 0; }
+  .stage { order: 1; }
+  .archive-panel { order: 2; }
+  .controls-panel { order: 3; }
+  .chart-panel { order: 4; }
+  .brain-panel { order: 5; }
+  .stats-panel { order: 6; }
+  .map-panel { order: 7; }
+  .hall-panel { order: 8; }
+  .about-panel { order: 9; }
 }
 
 /* ── Surfaces ───────────────────────────────────────────────────────────── */

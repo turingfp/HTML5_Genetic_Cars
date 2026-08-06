@@ -8,12 +8,14 @@
  * watching it is watching the search decide which shapes are even worth
  * having.
  *
- * The map is an instrument, not a poster. Hovering a lit cell draws that
- * niche's actual elite, silhouette and wheels, beside the cursor; clicking
- * sends it back into the race. The grid without the hover was tried first and
- * failed the only test that matters, "what am I looking at": a coloured
- * square says a good car of some shape exists, the thumbnail shows you the
- * car.
+ * The map is an instrument, not a poster. With a mouse, hovering a lit cell
+ * draws that niche's actual elite, silhouette and wheels, beside the cursor,
+ * and clicking sends it back into the race. On touch there is no hover, so a
+ * tap inspects and a second tap on the same cell races: one tap racing a car
+ * sight unseen felt like a bug, because it was one. The grid without the
+ * preview was tried first and failed the only test that matters, "what am I
+ * looking at": a coloured square says a good car of some shape exists, the
+ * thumbnail shows you the car.
  */
 
 import { ARCHIVE_GRID, type ArchiveCell } from '../ga/archive';
@@ -52,6 +54,10 @@ export class ArchiveView<T> {
   private readonly previewCanvas: HTMLCanvasElement;
   private readonly previewText: HTMLSpanElement;
   private previewFor: ArchiveCell<T> | null = null;
+  /** On touch, the cell a first tap selected, waiting for its second. */
+  private armed: ArchiveCell<T> | null = null;
+  /** Where the pointer went down, to tell a tap from a scroll. */
+  private downAt: { x: number; y: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -69,15 +75,49 @@ export class ArchiveView<T> {
     // panel, which is the nearest positioned ancestor.
     canvas.parentElement?.append(this.preview);
 
-    canvas.addEventListener('click', (event) => {
+    canvas.addEventListener('pointerdown', (event) => {
+      this.downAt = { x: event.clientX, y: event.clientY };
+    });
+    canvas.addEventListener('pointerup', (event) => {
+      // A pointerup at the end of a scroll gesture is not a tap. Without this
+      // check, flick-scrolling the page across the map armed previews at
+      // random, which read as the panel glitching.
+      const from = this.downAt;
+      this.downAt = null;
+      if (from && Math.hypot(event.clientX - from.x, event.clientY - from.y) > 12) return;
+
       const cell = this.cellAt(event);
-      if (cell) this.onPick?.(cell.def);
+      if (!cell) {
+        this.hidePreview();
+        return;
+      }
+      if (event.pointerType === 'mouse') {
+        this.onPick?.(cell.def);
+        return;
+      }
+      // Touch: inspect first, race on the second tap of the same cell.
+      if (this.armed === cell) {
+        this.onPick?.(cell.def);
+        this.hidePreview();
+        return;
+      }
+      this.armed = cell;
+      this.showPreview(cell, event, true);
     });
-    canvas.addEventListener('pointermove', (event) => this.hover(event));
-    canvas.addEventListener('pointerleave', () => {
-      this.preview.hidden = true;
-      this.previewFor = null;
+    canvas.addEventListener('pointermove', (event) => {
+      // Hover is a mouse idea. On touch, pointermove during a scroll would
+      // pop previews the finger never asked for and nothing would clear them.
+      if (event.pointerType === 'mouse') this.hover(event);
     });
+    canvas.addEventListener('pointerleave', (event) => {
+      if (event.pointerType === 'mouse') this.hidePreview();
+    });
+  }
+
+  private hidePreview(): void {
+    this.preview.hidden = true;
+    this.previewFor = null;
+    this.armed = null;
   }
 
   invalidate(): void {
@@ -107,14 +147,18 @@ export class ArchiveView<T> {
   private hover(event: MouseEvent): void {
     const cell = this.cellAt(event);
     this.canvas.style.cursor = cell ? 'pointer' : 'default';
-    if (!cell || !this.toSilhouette) {
-      this.preview.hidden = true;
-      this.previewFor = null;
+    if (!cell) {
+      this.hidePreview();
       return;
     }
+    this.showPreview(cell, event, false);
+  }
 
-    // Redraw the card only when the cursor crosses into a different cell;
-    // pointermove fires far too often to draw a thumbnail every time.
+  private showPreview(cell: ArchiveCell<T>, event: MouseEvent, touch: boolean): void {
+    if (!this.toSilhouette) return;
+
+    // Redraw the card only when a different cell is shown; pointermove fires
+    // far too often to draw a thumbnail every time.
     if (this.previewFor !== cell) {
       this.previewFor = cell;
       const size = 72;
@@ -128,17 +172,25 @@ export class ArchiveView<T> {
         pctx.scale(dpr, dpr);
         drawThumbnail(pctx, this.toSilhouette(cell.def), size, ELITE_STYLE);
       }
-      this.previewText.textContent = `${cell.score.toFixed(1)} · gen ${cell.generation + 1} · click to race`;
+      this.previewText.textContent = `${cell.score.toFixed(1)} · gen ${cell.generation + 1} · ${
+        touch ? 'tap again to race' : 'click to race'
+      }`;
     }
 
-    // Beside the cursor, flipped to the left near the right edge so the card
-    // never leaves the panel.
+    // Beside the pointer, flipped to the left near the right edge so the card
+    // never leaves the panel. On touch it sits above the finger instead,
+    // because the finger is exactly where a beside-the-cursor card would go.
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const flip = x > rect.width * 0.55;
-    this.preview.style.left = flip ? `${x - 104}px` : `${x + 14}px`;
-    this.preview.style.top = `${Math.max(0, y - 40)}px`;
+    if (touch) {
+      this.preview.style.left = `${Math.max(0, Math.min(x - 52, rect.width - 110))}px`;
+      this.preview.style.top = `${Math.max(0, y - 130)}px`;
+    } else {
+      const flip = x > rect.width * 0.55;
+      this.preview.style.left = flip ? `${x - 104}px` : `${x + 14}px`;
+      this.preview.style.top = `${Math.max(0, y - 40)}px`;
+    }
     this.preview.hidden = false;
   }
 

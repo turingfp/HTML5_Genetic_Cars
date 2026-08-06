@@ -2,43 +2,68 @@
  * The 3D view.
  *
  * Cars are rebuilt as meshes whenever a new generation starts, then only their
- * transforms change per frame — the geometry of a car never varies once it is
+ * transforms change per frame. The geometry of a car never varies once it is
  * born, so there is nothing else to update.
  */
 
 import {
+  ACESFilmicToneMapping,
   AmbientLight,
+  BackSide,
   BoxGeometry,
-  CapsuleGeometry,
   Color,
+  CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Fog,
   Group,
   HemisphereLight,
-  InstancedMesh,
-  Matrix4,
   Mesh,
-  MeshLambertMaterial,
+  MeshBasicMaterial,
   MeshStandardMaterial,
+  PCFSoftShadowMap,
   PerspectiveCamera,
-  Quaternion,
   Scene,
+  ShaderMaterial,
+  SphereGeometry,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import { CAMERA_SMOOTHING, PHYSICS_HZ, TILE_HEIGHT, TILE_WIDTH } from '../config';
+import { CAMERA_SMOOTHING, PHYSICS_HZ } from '../config';
+import { detectQuality } from '../core/device';
 import { chassisHullPoints, wheelMounts, type Car3DDef } from '../ga/genome3d';
+import type { Ghost3DFrame } from '../replay/ghost3d';
+import { lineageHex, lineageHue } from '../ga/lineage';
+import { wheelHalfTread } from '../sim3d/car3d';
+import { CRATE_HALF } from '../sim3d/debris';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
-import { segmentRotation, type Track3D } from '../sim3d/track3d';
+import type { Track3D } from '../sim3d/track3d';
 import { Graveyard, type Death } from './graveyard';
+import { buildDistanceMarkers, buildRoadGeometry } from './road';
 import { Trails } from './trails';
 
 const ELITE_COLOR = 0x60a5fa;
 const NORMAL_COLOR = 0xf87171;
 const LEADER_COLOR = 0xfde047;
+/** Pale and cold, so the ghost reads as a memory rather than a rival. */
+const GHOST_COLOR = 0x93c5fd;
+/** Crates: warm and matte, so they read as cargo rather than as scenery. */
+const CRATE_COLOR = 0xb98a4f;
+
+/** Free every geometry and material hanging off a group, then empty it. */
+function disposeGroup(group: Group): void {
+  group.traverse((node) => {
+    const mesh = node as Mesh;
+    mesh.geometry?.dispose?.();
+    const material = mesh.material;
+    if (Array.isArray(material)) for (const m of material) m.dispose();
+    else material?.dispose?.();
+  });
+  group.clear();
+}
 
 interface CarMeshes {
   group: Group;
@@ -53,16 +78,53 @@ export class Renderer3D {
   private camera: PerspectiveCamera;
   private canvas: HTMLCanvasElement;
 
-  private road: InstancedMesh | null = null;
+  private road: Mesh | null = null;
   private roadSeed = '';
+  private readonly crates: Mesh[] = [];
+  private readonly crateGeometry = new BoxGeometry(CRATE_HALF * 2, CRATE_HALF * 2, CRATE_HALF * 2);
+  private readonly crateMaterial = new MeshStandardMaterial({
+    color: CRATE_COLOR,
+    roughness: 0.85,
+    metalness: 0,
+  });
   private cars: CarMeshes[] = [];
   private carGeneration = -1;
 
   /** Where the camera is looking, eased toward the leader. */
   private focus = new Vector3(0, 2, 0);
   private observer: ResizeObserver | null = null;
+  private sun: DirectionalLight;
+
+  // Identical for every car and every generation, so built once and shared
+  // rather than recreated each time a generation is born.
+  /** Colour cars by the family they descend from rather than by status. */
+  colourByLineage = false;
+
+  private readonly wheelMaterial = new MeshStandardMaterial({
+    color: 0x11161f,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+  private readonly hubMaterial = new MeshBasicMaterial({ color: 0xcbd5e1 });
 
   private controls: OrbitControls;
+  /**
+   * Set when the browser takes the WebGL context away, which iOS does when it
+   * decides the tab is using too much memory. three.js keeps being told to
+   * draw and quietly does nothing, so the canvas freezes with no error
+   * anywhere. Someone has to notice, and it may as well be us.
+   */
+  contextLost = false;
+  /** Called when the context is lost or comes back, so the app can say so. */
+  onContextChange: ((lost: boolean) => void) | null = null;
+  /**
+   * The best run on this track, replayed translucent alongside the living.
+   *
+   * Rebuilt only when the ghost's car changes, since the geometry is fixed for
+   * a given genome and a ghost may hold the same one for many generations.
+   */
+  private ghost: { group: Group; wheels: Mesh[]; def: Car3DDef | null } | null = null;
+
   readonly graveyard = new Graveyard();
   readonly trails = new Trails();
 
@@ -73,21 +135,52 @@ export class Renderer3D {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.renderer = new WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const quality = detectQuality();
+    this.renderer = new WebGLRenderer({
+      canvas,
+      antialias: quality.antialias,
+      // A phone that cannot keep a context alive should get a slow scene
+      // rather than a dead one.
+      powerPreference: quality.lowPower ? 'default' : 'high-performance',
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.maxPixelRatio));
+    // Shadows are what make the cars sit *on* the road rather than float above
+    // it; without them the scene reads flat however good the geometry is. So
+    // they stay on everywhere, and a phone gets a smaller map instead of none.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    // Filmic tone mapping instead of clipping raw values: the bright sunlit
+    // road no longer washes out to flat white and the shadowed sides keep
+    // their colour, which is most of the difference between "3D shapes" and
+    // "a scene".
+    this.renderer.toneMapping = ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new Scene();
-    this.scene.background = new Color(0x0b1120);
-    this.scene.fog = new Fog(0x0b1120, 40, 130);
+    this.scene.fog = new Fog(0x0b1120, 55, 200);
+    this.scene.add(this.buildSky());
 
-    this.camera = new PerspectiveCamera(55, 1, 0.1, 400);
+    this.camera = new PerspectiveCamera(55, 1, 0.1, 600);
 
-    this.scene.add(new AmbientLight(0xffffff, 0.35));
-    this.scene.add(new HemisphereLight(0x9ec9ff, 0x0b1120, 0.7));
+    this.scene.add(new AmbientLight(0xffffff, 0.25));
+    this.scene.add(new HemisphereLight(0x9ec9ff, 0x101a2e, 0.55));
 
-    const sun = new DirectionalLight(0xfff2d5, 2.1);
-    sun.position.set(-30, 60, 35);
-    this.scene.add(sun);
+    this.sun = new DirectionalLight(0xfff2d5, 2.4);
+    this.sun.position.set(-24, 40, 22);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
+    // A tight ortho frustum that travels with the action keeps the shadow map's
+    // texels small enough to resolve individual wheels.
+    const shadow = this.sun.shadow.camera;
+    shadow.near = 1;
+    shadow.far = 120;
+    shadow.left = -22;
+    shadow.right = 22;
+    shadow.top = 22;
+    shadow.bottom = -22;
+    this.sun.shadow.bias = -0.0012;
+    this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
 
     this.scene.add(this.graveyard.mesh);
     this.scene.add(this.trails.group);
@@ -102,7 +195,19 @@ export class Renderer3D {
     this.controls.maxDistance = 120;
     // Stay above ground; looking up from underneath the road is disorienting.
     this.controls.maxPolarAngle = Math.PI * 0.49;
-    this.camera.position.set(-5.5, 3.4, 7);
+    this.camera.position.set(-8, 4.6, 9.5);
+
+    canvas.addEventListener('webglcontextlost', (event) => {
+      // Preventing the default is what makes the loss recoverable at all;
+      // without it the browser never offers the context back.
+      event.preventDefault();
+      this.contextLost = true;
+      this.onContextChange?.(true);
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      this.onContextChange?.(false);
+    });
 
     this.resize();
     if (typeof ResizeObserver !== 'undefined') {
@@ -115,6 +220,12 @@ export class Renderer3D {
     this.observer?.disconnect();
     this.observer = null;
     this.clearCars();
+    this.clearGhost();
+    this.wheelMaterial.dispose();
+    this.hubMaterial.dispose();
+    this.syncCrates(0);
+    this.crateGeometry.dispose();
+    this.crateMaterial.dispose();
     this.road?.geometry.dispose();
     this.graveyard.dispose();
     this.trails.dispose();
@@ -131,43 +242,96 @@ export class Renderer3D {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Build the road once per track: 200 identical boxes, one draw call. */
+  /** A vertical gradient standing in for a sky, so the horizon is not a void. */
+  private buildSky(): Mesh {
+    const material = new ShaderMaterial({
+      side: BackSide,
+      depthWrite: false,
+      uniforms: {
+        top: { value: new Color(0x0a1122) },
+        bottom: { value: new Color(0x24466e) },
+      },
+      vertexShader: `
+        varying vec3 vWorld;
+        void main() {
+          vWorld = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 top;
+        uniform vec3 bottom;
+        varying vec3 vWorld;
+        void main() {
+          float h = clamp(normalize(vWorld).y * 0.5 + 0.5, 0.0, 1.0);
+          gl_FragColor = vec4(mix(bottom, top, pow(h, 0.7)), 1.0);
+        }
+      `,
+    });
+    const sky = new Mesh(new SphereGeometry(400, 24, 16), material);
+    sky.frustumCulled = false;
+    return sky;
+  }
+
+  /** Build the road once per track, as a single stitched ribbon. */
   private buildRoad(track: Track3D): void {
     if (this.road) {
       this.scene.remove(this.road);
       this.road.geometry.dispose();
+      (this.road.material as MeshStandardMaterial).dispose();
       this.road = null;
     }
 
-    const geometry = new BoxGeometry(TILE_WIDTH, TILE_HEIGHT, track.halfWidth * 2);
-    const material = new MeshLambertMaterial({ color: 0x51708f });
-    const mesh = new InstancedMesh(geometry, material, track.segments.length);
-
-    const matrix = new Matrix4();
-    const position = new Vector3();
-    const quaternion = new Quaternion();
-    const scale = new Vector3(1, 1, 1);
-
-    track.segments.forEach((segment, i) => {
-      const r = segmentRotation(segment);
-      position.set(segment.center.x, segment.center.y, segment.center.z);
-      quaternion.set(r.x, r.y, r.z, r.w);
-      matrix.compose(position, quaternion, scale);
-      mesh.setMatrixAt(i, matrix);
+    const material = new MeshStandardMaterial({
+      color: 0x62809c,
+      roughness: 0.95,
+      metalness: 0.02,
+      // Tilt is clamped only just under a quarter turn, so two neighbouring
+      // tiles can differ by most of a half turn and the quad joining them
+      // genuinely folds. No winding is correct there, so draw both sides.
+      side: DoubleSide,
     });
-    mesh.instanceMatrix.needsUpdate = true;
+    const mesh = new Mesh(buildRoadGeometry(track), material);
+    mesh.receiveShadow = true;
+
+    // Bars every ten metres, so speed and distance are legible.
+    const markers = new Mesh(
+      buildDistanceMarkers(track),
+      new MeshBasicMaterial({ color: 0xe8f1ff, transparent: true, opacity: 0.55 }),
+    );
+    markers.frustumCulled = false;
+    mesh.add(markers);
 
     this.scene.add(mesh);
     this.road = mesh;
     this.roadSeed = track.seed;
   }
 
+  /**
+   * Release a generation's meshes.
+   *
+   * Traverses rather than touching the top-level meshes only: each wheel also
+   * carries a hub and a marker as children, and disposing just the wheel left
+   * eight geometries per car behind on the GPU every generation.
+   */
+  /** Drop the ghost's meshes, when it changes or the renderer goes away. */
+  clearGhost(): void {
+    if (!this.ghost) return;
+    this.scene.remove(this.ghost.group);
+    disposeGroup(this.ghost.group);
+    this.ghost = null;
+  }
+
   private clearCars(): void {
     for (const car of this.cars) {
       this.scene.remove(car.group);
-      car.chassis.geometry.dispose();
+      car.group.traverse((object) => {
+        const mesh = object as Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+      });
+      // Only the body material is per-car; the wheel and hub materials are
+      // shared for the renderer's lifetime and disposed with it.
       car.material.dispose();
-      for (const wheel of car.wheels) wheel.geometry.dispose();
     }
     this.cars = [];
   }
@@ -175,20 +339,17 @@ export class Renderer3D {
   private buildCars(defs: (Car3DDef | null)[]): void {
     this.clearCars();
 
-    const wheelMaterial = new MeshStandardMaterial({
-      color: 0x2f3d52,
-      roughness: 0.7,
-      metalness: 0.2,
-    });
+    const { wheelMaterial, hubMaterial } = this;
 
     for (const def of defs) {
       const group = new Group();
       const material = new MeshStandardMaterial({
         color: NORMAL_COLOR,
-        roughness: 0.5,
-        metalness: 0.15,
-        transparent: true,
-        opacity: 0.85,
+        roughness: 0.45,
+        metalness: 0.2,
+        // Opaque: a translucent body hid the wheels behind it and made the
+        // whole car read as a smudge rather than a machine.
+        flatShading: true,
       });
 
       if (!def) {
@@ -198,16 +359,29 @@ export class Renderer3D {
 
       const points = chassisHullPoints(def).map((p) => new Vector3(p.x, p.y, p.z));
       const chassis = new Mesh(new ConvexGeometry(points), material);
+      chassis.castShadow = true;
       group.add(chassis);
 
       const wheels: Mesh[] = [];
       for (const mount of wheelMounts(def)) {
-        const radius = def.base.wheelRadius[mount.wheel]!;
-        // A capsule matches the physics shape; three builds it along y, so it
-        // is turned to lie along the axle.
-        const geometry = new CapsuleGeometry(radius, 0.24, 4, 16);
+        const radius = def.base.wheels[mount.wheel]!.radius;
+        const width = wheelHalfTread(radius) * 2;
+        // A cylinder matching the physics hull exactly. Three builds cylinders
+        // along y, so it is turned to lie along the axle.
+        const geometry = new CylinderGeometry(radius, radius, width, 16);
         geometry.rotateX(Math.PI / 2);
         const wheel = new Mesh(geometry, wheelMaterial);
+        wheel.castShadow = true;
+
+        // A pale hub disc on the outer face, so the wheel visibly spins.
+        const hub = new Mesh(new CylinderGeometry(radius * 0.42, radius * 0.42, width * 1.04, 12), hubMaterial);
+        hub.rotateX(Math.PI / 2);
+        // Offset marker breaks the disc's symmetry so rotation is unmistakable.
+        const spoke = new Mesh(new CylinderGeometry(radius * 0.1, radius * 0.1, width * 1.06, 6), hubMaterial);
+        spoke.rotateX(Math.PI / 2);
+        spoke.position.y = radius * 0.62;
+        wheel.add(hub, spoke);
+
         wheels.push(wheel);
         group.add(wheel);
       }
@@ -217,8 +391,103 @@ export class Renderer3D {
     }
   }
 
+  /**
+   * Place the ghost, building its body the first time it appears or whenever
+   * the run being replayed changes.
+   */
+  drawGhost(frame: Ghost3DFrame | null): void {
+    if (!frame) {
+      if (this.ghost) this.ghost.group.visible = false;
+      return;
+    }
+
+    if (!this.ghost || this.ghost.def !== frame.def) {
+      this.clearGhost();
+      this.ghost = this.buildGhost(frame.def);
+      this.scene.add(this.ghost.group);
+    }
+
+    const g = this.ghost!;
+    g.group.visible = true;
+    g.group.position.set(frame.position.x, frame.position.y, frame.position.z);
+    g.group.quaternion.set(
+      frame.rotation.x,
+      frame.rotation.y,
+      frame.rotation.z,
+      frame.rotation.w,
+    );
+    // No spin angle is recorded, so it is derived: distance over radius is
+    // exactly how far a rolling wheel has turned.
+    for (let i = 0; i < g.wheels.length; i++) {
+      const wheel = g.wheels[i]!;
+      const radius = wheel.userData['radius'] as number;
+      wheel.rotation.z = -frame.distance / Math.max(radius, 0.01);
+    }
+  }
+
+  private buildGhost(def: Car3DDef): { group: Group; wheels: Mesh[]; def: Car3DDef } {
+    const group = new Group();
+    // Translucent and unlit, so it reads as a memory rather than a competitor,
+    // and casts no shadow: a shadow would imply something is there.
+    const material = new MeshBasicMaterial({
+      color: GHOST_COLOR,
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false,
+    });
+    const points = chassisHullPoints(def).map((p) => new Vector3(p.x, p.y, p.z));
+    group.add(new Mesh(new ConvexGeometry(points), material));
+
+    const wheels: Mesh[] = [];
+    for (const mount of wheelMounts(def)) {
+      const radius = def.base.wheels[mount.wheel]!.radius;
+      const geometry = new CylinderGeometry(radius, radius, wheelHalfTread(radius) * 2, 12);
+      geometry.rotateX(Math.PI / 2);
+      const wheel = new Mesh(geometry, material);
+      wheel.position.set(mount.x, mount.y, mount.z);
+      wheel.userData['radius'] = radius;
+      wheels.push(wheel);
+      group.add(wheel);
+    }
+    group.renderOrder = 2;
+    return { group, wheels, def };
+  }
+
+  /**
+   * One mesh per crate, made once and kept.
+   *
+   * The count only changes when the track does, and all of them share one
+   * geometry and one material, so this is a pool rather than a rebuild.
+   */
+  private syncCrates(count: number): void {
+    while (this.crates.length > count) {
+      const mesh = this.crates.pop();
+      if (mesh) this.scene.remove(mesh);
+    }
+    while (this.crates.length < count) {
+      const mesh = new Mesh(this.crateGeometry, this.crateMaterial);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      this.crates.push(mesh);
+    }
+  }
+
   draw(track: Track3D, snapshot: World3DSnapshot, dt: number): void {
     if (!this.road || this.roadSeed !== track.seed) this.buildRoad(track);
+
+    this.syncCrates(snapshot.crates.length);
+    for (let i = 0; i < snapshot.crates.length; i++) {
+      const pose = snapshot.crates[i]!;
+      const mesh = this.crates[i]!;
+      mesh.position.set(pose.position.x, pose.position.y, pose.position.z);
+      mesh.quaternion.set(
+        pose.rotation.x,
+        pose.rotation.y,
+        pose.rotation.z,
+        pose.rotation.w,
+      );
+    }
 
     // Geometry only changes when a new generation is born.
     if (this.carGeneration !== snapshot.generation || this.cars.length !== snapshot.cars.length) {
@@ -250,8 +519,22 @@ export class Renderer3D {
         );
       }
 
-      const color = i === snapshot.leaderIndex ? LEADER_COLOR : car.isElite ? ELITE_COLOR : NORMAL_COLOR;
-      meshes.material.color.setHex(color);
+      // Every ordinary car got the same red, so a pack read as one mass. The
+      // leader and the elites keep their fixed colours; the rest are spread
+      // around the base hue so individuals can be followed by eye.
+      if (i === snapshot.leaderIndex) {
+        // The leader keeps its own colour even with families on: losing track
+        // of who is winning costs more than the extra hue tells you.
+        meshes.material.color.setHex(LEADER_COLOR);
+      } else if (this.colourByLineage) {
+        meshes.material.color.setHSL(lineageHue(car.lineage), 0.66, 0.56);
+      } else if (car.isElite) {
+        meshes.material.color.setHex(ELITE_COLOR);
+      } else {
+        meshes.material.color.setHex(NORMAL_COLOR);
+        const spread = snapshot.cars.length > 1 ? i / (snapshot.cars.length - 1) : 0;
+        meshes.material.color.offsetHSL((spread - 0.5) * 0.18, 0, (spread - 0.5) * 0.12);
+      }
     }
 
     this.graveyard.mesh.visible = this.showGraveyard;
@@ -263,12 +546,26 @@ export class Renderer3D {
         snapshot.cars.map((car, i) => ({
           alive: car.alive,
           position: car.chassis.position,
-          color: i === snapshot.leaderIndex ? LEADER_COLOR : car.isElite ? ELITE_COLOR : NORMAL_COLOR,
+          color:
+            i === snapshot.leaderIndex
+              ? LEADER_COLOR
+              : this.colourByLineage
+                ? lineageHex(car.lineage)
+                : car.isElite
+                  ? ELITE_COLOR
+                  : NORMAL_COLOR,
         })),
       );
     }
 
     this.updateCamera(snapshot, dt);
+
+    // Carry the sun with the action so the shadow frustum stays tight around
+    // whatever is on screen rather than spanning the whole 300 metre course.
+    this.sun.target.position.copy(this.focus);
+    this.sun.position.set(this.focus.x - 24, this.focus.y + 40, this.focus.z + 22);
+    this.sun.target.updateMatrixWorld();
+
     this.renderer.render(this.scene, this.camera);
   }
 

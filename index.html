@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Genetic Cars — evolving vehicles in your browser</title>
+    <title>BoxCar3D · evolve a car, design a track, share the search</title>
     <meta
       name="description"
-      content="A genetic algorithm evolves two-wheeled cars to cross procedurally generated terrain, simulated with Box2D physics in the browser."
+      content="A genetic algorithm evolves the shape of a car and the small neural network that drives it, on Box3D physics in your browser. Design a track, share the code, and every browser driving it becomes an island in one distributed search."
     />
     <link
       rel="icon"
@@ -16,18 +16,19 @@
   <body>
     <div class="app">
       <header class="app-header">
-        <div>
-          <h1>Genetic Cars</h1>
+        <div class="brand">
+          <h1>BoxCar<span>3D</span></h1>
           <p class="tagline">
-            Twenty random cars. The ones that get furthest have children. Repeat.
+            Twenty random cars. The ones that get furthest have kids. Design the hill they climb,
+            share the code, and breed against everyone else driving it.
           </p>
         </div>
         <div class="header-meta">
           <div class="segmented mode-switch" id="modes" role="group" aria-label="Simulation mode">
-            <button type="button" data-mode="2d" aria-pressed="true">2D</button>
-            <button type="button" data-mode="3d" aria-pressed="false">3D</button>
+            <button type="button" data-mode="3d" aria-pressed="true">3D</button>
+            <button type="button" data-mode="2d" aria-pressed="false">2D</button>
           </div>
-          <span class="seed-chip">track <code data-readout="seed">—</code></span>
+          <span class="seed-chip">track <code data-readout="seed">...</code></span>
           <button type="button" id="share" class="ghost-button" title="Copy a link to this track">
             Copy link
           </button>
@@ -35,148 +36,411 @@
       </header>
 
       <section class="stage">
-        <canvas id="view" aria-label="Simulation view"></canvas>
-        <canvas id="view3d" aria-label="3D simulation view" hidden></canvas>
-        <div class="hud">
-          <div class="hud-item">
-            <span class="hud-label">generation</span>
-            <span class="hud-value" data-readout="generation">0</span>
+        <div class="stage-view">
+          <canvas id="view" aria-label="Simulation view" hidden></canvas>
+          <canvas id="view3d" aria-label="3D simulation view"></canvas>
+          <div class="hud">
+            <div class="hud-item">
+              <span class="hud-label">generation</span>
+              <span class="hud-value" data-readout="generation">0</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label">alive</span>
+              <span class="hud-value" data-readout="alive">0</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label">distance</span>
+              <span class="hud-value" data-readout="distance">0.0m</span>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label">best ever</span>
+              <span class="hud-value" data-readout="best">0.0</span>
+            </div>
+            <div class="hud-item hud-perf">
+              <span class="hud-label">steps/s</span>
+              <span class="hud-value" data-readout="sps">0</span>
+            </div>
           </div>
-          <div class="hud-item">
-            <span class="hud-label">alive</span>
-            <span class="hud-value" data-readout="alive">0</span>
-          </div>
-          <div class="hud-item">
-            <span class="hud-label">distance</span>
-            <span class="hud-value" data-readout="distance">0.0m</span>
-          </div>
-          <div class="hud-item">
-            <span class="hud-label">best ever</span>
-            <span class="hud-value" data-readout="best">0.0</span>
-          </div>
-          <div class="hud-item hud-perf">
-            <span class="hud-label">steps/s</span>
-            <span class="hud-value" data-readout="sps">0</span>
-          </div>
+          <div class="medal-bar" id="medals" aria-label="Progress along the track"></div>
+          <div class="stage-banner" id="banner" hidden></div>
         </div>
-        <div class="stage-banner" id="banner" hidden></div>
-      </section>
 
-      <section class="panel controls-panel">
-        <div class="speed-row">
+        <div class="transport">
           <button type="button" id="pause" class="primary-button">Pause</button>
           <div class="segmented" id="speeds" role="group" aria-label="Simulation speed"></div>
+          <button type="button" id="follow" class="ghost-button">Follow leader</button>
+          <button type="button" id="replay" class="ghost-button">Watch best run</button>
         </div>
+      </section>
 
-        <div class="control">
-          <label for="mutation-rate">
-            Mutation rate <output data-readout="mutation-rate">5%</output>
-          </label>
-          <input id="mutation-rate" type="range" min="0" max="100" step="1" value="5" />
-          <p class="hint">How often each gene changes when a car is born.</p>
-        </div>
-
-        <div class="control">
-          <label for="mutation-size">
-            Mutation size <output data-readout="mutation-size">100%</output>
-          </label>
-          <input id="mutation-size" type="range" min="1" max="100" step="1" value="100" />
-          <p class="hint">How far a gene can drift. Small values fine-tune.</p>
-        </div>
-
-        <div class="control">
-          <label for="elites"> Elite clones <output data-readout="elites">1</output> </label>
-          <input id="elites" type="range" min="0" max="10" step="1" value="1" />
-          <p class="hint">Top cars copied unchanged into the next generation.</p>
-        </div>
-
-        <div class="control">
-          <label for="population"> Population <output data-readout="population">20</output> </label>
-          <input id="population" type="range" min="4" max="40" step="1" value="20" />
-          <p class="hint">Applies from the next generation.</p>
-        </div>
-
-        <div class="control">
-          <label for="seed-input">Track seed</label>
-          <div class="seed-row">
-            <input id="seed-input" type="text" spellcheck="false" autocomplete="off" />
-            <button type="button" id="randomize" class="ghost-button" title="Random seed">⤨</button>
+      <div class="column-main">
+        <section class="panel brain-panel">
+          <div class="panel-head">
+            <h2>Driver</h2>
+            <span class="panel-note" data-readout="brain-target">leader</span>
           </div>
-          <button type="button" id="rebuild" class="secondary-button">Build this track</button>
-        </div>
-
-        <div class="button-stack">
-          <button type="button" id="reset" class="secondary-button">New population</button>
-          <button type="button" id="replay" class="secondary-button">Watch best run</button>
-          <button type="button" id="follow" class="secondary-button">Follow the leader</button>
-        </div>
-
-        <div class="button-stack" id="view3d-controls" hidden>
+          <canvas id="brain" aria-label="The selected car's neural network"></canvas>
+          <div class="legend">
+            <span><i class="swatch-senses"></i>what it feels</span>
+            <span><i class="swatch-hidden"></i>what it makes of that</span>
+            <span><i class="swatch-out"></i>what each wheel does</span>
+            <span><i class="swatch-loop"></i>what it remembers</span>
+          </div>
           <p class="hint">
-            Drag to orbit, scroll to zoom. Each marker is a car that died there —
-            bright means recent, tilted means it went over the edge.
+            Every car has a small network that reads how it is sitting, plus the slope of the
+            ground at three distances ahead, and sets how fast each wheel turns. Green edges push,
+            red ones hold back, and the brighter a line is the more signal going through it right
+            now. The loop above a middle node is memory: that unit feeds its own value into the
+            next step, so the car can tell "stuck against this rock for a second" from "about to
+            crest a rise". Click a bar in Cars to watch a different car.
           </p>
-          <button type="button" id="view-graveyard" class="secondary-button">
-            Survey the graveyard
-          </button>
-          <label class="toggle">
-            <input type="checkbox" id="toggle-graveyard" checked />
-            Death markers <span data-readout="deaths">0</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="toggle-trails" checked />
-            Motion trails
-          </label>
-        </div>
-      </section>
+          <div class="subhead">
+            <h3>Gene pool</h3>
+            <span class="panel-note">one row per car, one column per weight</span>
+          </div>
+          <canvas id="genepool" aria-label="Every car's network weights"></canvas>
+          <p class="hint">
+            Generation one is pure noise. Keep it running and columns start to agree, which is
+            selection locking in a weight that keeps paying off.
+          </p>
+        </section>
+        <section class="panel archive-panel">
+          <div class="panel-head">
+            <h2>Map of designs</h2>
+            <span class="panel-note">MAP-Elites archive</span>
+          </div>
+          <div class="archive-body">
+            <canvas id="archive" aria-label="Best car of every body shape"></canvas>
+            <div class="archive-side">
+              <div class="metric">
+                <span class="metric-value" data-readout="archive">0</span>
+                <span class="metric-label">of 144 niches filled</span>
+              </div>
+              <div class="metric">
+                <span class="metric-value" data-readout="qd">0</span>
+                <span class="metric-label">QD score, all cells summed</span>
+              </div>
+              <p class="hint">
+                Every square is a kind of body: wheels grow to the right, chassis grows upward,
+                and each lit square permanently keeps the best car of that shape, warm colours
+                scoring higher, a white ring on recent finds. The leaderboard forgets everything
+                that is not winning; this map cannot, because a car only ever competes with its
+                own shape. Hover or tap a lit square to see its car; click it, or tap it a
+                second time, to put that car back in the race.
+              </p>
+              <p class="hint">
+                Best-so-far can sit flat for fifty generations while the map is still filling.
+                The QD score is how that hidden progress is measured: it rises when a new shape
+                works at all, or an old one gets better.
+              </p>
+            </div>
+          </div>
+        </section>
+        <section class="panel hall-panel">
+          <div class="panel-head">
+            <h2>Hall of fame</h2>
+            <button type="button" id="clear-hall" class="ghost-button small">Clear</button>
+          </div>
+          <div id="leaderboard"></div>
+        </section>
+      </div>
 
-      <section class="panel stats-panel">
-        <h2>Cars</h2>
-        <canvas id="health" aria-label="Health of each car"></canvas>
-        <p class="hint">Click a bar to follow that car.</p>
-      </section>
+      <div class="column-side">
+        <section class="panel stats-panel">
+          <div class="panel-head">
+            <h2>Cars</h2>
+            <span class="panel-note">click to follow</span>
+          </div>
+          <canvas id="health" aria-label="Health of each car"></canvas>
+        </section>
 
-      <section class="panel map-panel">
-        <h2>Track</h2>
-        <canvas id="minimap" aria-label="Track overview"></canvas>
-      </section>
+        <section class="panel chart-panel">
+          <h2>Fitness</h2>
+          <canvas id="chart" aria-label="Fitness by generation"></canvas>
+        </section>
 
-      <section class="panel chart-panel">
-        <h2>Fitness</h2>
-        <canvas id="chart" aria-label="Fitness by generation"></canvas>
-      </section>
+        <section class="panel map-panel">
+          <h2>Course map</h2>
+          <canvas id="minimap" aria-label="Course overview"></canvas>
+        </section>
 
-      <section class="panel hall-panel">
-        <h2>Hall of fame</h2>
-        <div id="leaderboard"></div>
-        <button type="button" id="clear-hall" class="ghost-button small">Clear</button>
-      </section>
+        <section class="panel controls-panel">
+          <details open>
+            <summary><h2>View</h2></summary>
+            <div class="details-body" id="view3d-controls">
+              <p class="hint">
+                Drag to orbit, scroll to zoom. Every marker is a car that died there. Bright means
+                recent, tilted means it went over the edge.
+              </p>
+              <button type="button" id="view-graveyard" class="secondary-button">
+                Survey the graveyard
+              </button>
+              <label class="toggle">
+                <input type="checkbox" id="toggle-graveyard" checked />
+                Death markers <span data-readout="deaths">0</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="toggle-trails" checked />
+                Motion trails
+              </label>
+            </div>
+            <p class="hint" id="view2d-note" hidden>
+              Scroll to zoom. Switch to 3D for the orbit camera and the graveyard.
+            </p>
+            <div class="details-body">
+              <label class="toggle">
+                <input type="checkbox" id="toggle-lineage" />
+                Colour by family <span data-readout="lineages">0</span>
+              </label>
+              <p class="hint">
+                Every car takes the colour of the line it descends from, so you can see a family
+                take over, or several hold on if diversity pressure is up.
+              </p>
+            </div>
+          </details>
+
+          <details open>
+            <summary><h2>Evolution</h2></summary>
+            <div class="details-body">
+              <div class="control">
+                <label for="mutation-rate">
+                  Mutation rate <output data-readout="mutation-rate">5%</output>
+                </label>
+                <input id="mutation-rate" type="range" min="0" max="100" step="1" value="5" />
+                <p class="hint">How often each gene changes when a car is born.</p>
+              </div>
+
+              <div class="control">
+                <label for="mutation-size">
+                  Mutation size <output data-readout="mutation-size">100%</output>
+                </label>
+                <input id="mutation-size" type="range" min="1" max="100" step="1" value="100" />
+                <p class="hint">How far a gene can drift. Small values fine tune.</p>
+              </div>
+
+              <div class="control">
+                <label for="elites"> Elite clones <output data-readout="elites">1</output> </label>
+                <input id="elites" type="range" min="0" max="10" step="1" value="1" />
+                <p class="hint">Top cars copied unchanged into the next generation.</p>
+              </div>
+
+              <div class="control">
+                <label for="population">
+                  Population <output data-readout="population">20</output>
+                </label>
+                <input id="population" type="range" min="4" max="40" step="1" value="20" />
+                <p class="hint">Applies from the next generation.</p>
+              </div>
+
+              <button type="button" id="reset" class="secondary-button">New population</button>
+            </div>
+          </details>
+
+          <details>
+            <summary><h2>Selection</h2></summary>
+            <div class="details-body">
+              <div class="control">
+                <label for="search">Search</label>
+                <select id="search">
+                  <option value="climb">Climb: breed the winners</option>
+                  <option value="illuminate">Illuminate: breed across the map</option>
+                </select>
+                <p class="hint">
+                  Climb is the classic genetic algorithm. Illuminate is MAP-Elites: one parent
+                  comes from the archive of body shapes below instead of from the current winners,
+                  so the search spreads across the whole map of designs rather than collapsing
+                  onto one. Measured over six tracks it fills about 40% more of the map and gives
+                  up nothing on best distance.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="goal">Selected for</label>
+                <select id="goal">
+                  <option value="speed">Distance and speed</option>
+                  <option value="distance">Distance only</option>
+                  <option value="airtime">Air time</option>
+                  <option value="efficiency">Distance per kilo</option>
+                </select>
+                <p class="hint">
+                  What counts as a good car. Air time breeds jumpers, distance per kilo breeds
+                  flimsy ones. Applies from the next generation.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="selection">Parents chosen by</label>
+                <select id="selection">
+                  <option value="rank">Rank, exponential</option>
+                  <option value="tournament">Tournament of three</option>
+                  <option value="roulette">Roulette, by fitness</option>
+                </select>
+                <p class="hint">
+                  Rank is the original's and is the gentlest of the three: with twenty cars it
+                  picks a top five parent about a third of the time. Tournament is the harshest at
+                  well over half. Roulette sits between them until one car runs away with it, and
+                  then it collapses fast.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="crossover">Breeding</label>
+                <select id="crossover">
+                  <option value="two-point">Two point</option>
+                  <option value="uniform">Uniform</option>
+                  <option value="none">Asexual, clones only</option>
+                </select>
+                <p class="hint">
+                  Two point keeps runs of neighbouring corners together. Asexual turns this into
+                  mutation only, which is a genuinely different search.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="diversity">
+                  Diversity pressure <output data-readout="diversity">0%</output>
+                </label>
+                <input id="diversity" type="range" min="0" max="100" step="1" value="0" />
+                <p class="hint">
+                  Divides a car's fitness by how many near identical cars it is competing with. At
+                  zero the gene pool collapses onto one design within a dozen generations. Turn it
+                  up and watch the heatmap stay varied.
+                </p>
+              </div>
+
+              <div class="control">
+                <label for="immigrants">
+                  Fresh blood <output data-readout="immigrants">0</output>
+                </label>
+                <input id="immigrants" type="range" min="0" max="8" step="1" value="0" />
+                <p class="hint">Random newcomers each generation, replacing the worst children.</p>
+              </div>
+            </div>
+          </details>
+
+          <details open>
+            <summary><h2>Track</h2></summary>
+            <div class="details-body" id="track-editor"></div>
+          </details>
+
+          <details open>
+            <summary><h2>Workshop</h2></summary>
+            <div class="details-body" id="workshop"></div>
+          </details>
+
+          <details open>
+            <summary><h2>Room</h2></summary>
+            <div class="details-body" id="room-panel"></div>
+          </details>
+        </section>
+
+      </div>
 
       <section class="panel about-panel">
         <details>
-          <summary>How it works</summary>
-          <p>
-            Each car is described by fourteen numbers: eight lengths that shape its chassis, plus
-            the radius, density and mounting point of each of its two wheels. The first generation
-            is random.
-          </p>
-          <p>
-            A car scores by how far right it travels, plus a bonus for its average speed. It dies
-            when it stops making progress for ten seconds. Once every car has died, the best ones
-            are paired up, their genes spliced together and lightly mutated, and the next
-            generation sets off.
-          </p>
-          <p>
-            The terrain gets steeper the further you go, and is built from the track seed — the
-            same seed always generates the same course, so runs can be compared and shared.
-          </p>
-          <p class="credits">
-            A modernised rebuild of
-            <a href="http://rednuht.org/genetic_cars_2/" rel="noreferrer noopener"
-              >rednuht's Genetic Cars</a
-            >, itself inspired by BoxCar2D. Physics by
-            <a href="https://piqnt.com/planck.js/" rel="noreferrer noopener">planck.js</a>.
-          </p>
+          <summary><h2>What this is</h2></summary>
+          <div class="about-body">
+            <p>
+              This started life as
+              <a href="http://rednuht.org/genetic_cars_2/" rel="noreferrer noopener"
+                >rednuht's Genetic Cars</a
+              >, a 2011 page that was itself a take on BoxCar2D. The idea was lovely and simple:
+              throw random two wheeled shapes at a hill, keep the ones that get furthest, breed
+              them, and watch a car appear out of nothing. That code sat untouched from 2013,
+              running on a Flash port of Box2D.
+            </p>
+            <p>
+              BoxCar3D is a rebuild of it. Cars now run in three dimensions on Box3D, which is
+              Erin Catto's newer engine and a direct descendant of the Box2D the original used. The
+              road banks from side to side, so a car can roll off the edge instead of only ever
+              getting stuck. Every car carries a small neural network that actually drives it. And
+              the body itself is far more variable: corners rotate as well as stretch, a car has
+              two to four wheels rather than exactly two, and chassis density is a gene.
+            </p>
+            <p>
+              That last one is the real difference. In the original a wheel spun at one fixed speed
+              forever, so a car was a shape and nothing else. Here the network reads how the car is
+              sitting and moving, looks at the ground three distances ahead, remembers what it was
+              doing a moment ago, and sets the speed of each wheel from all of that. Its 82 weights
+              are genes like any other, so the search is over bodies and drivers at the same time,
+              and you can watch both change in the Driver panel.
+            </p>
+            <p>
+              Of those, the body turned out to matter most. Measured over twelve runs, a cleverer
+              driver bought almost nothing, while a more variable body improved the average
+              distance the whole population reached by about 15%. The numbers are in the README.
+            </p>
+            <p>
+              A car scores by how far it gets plus a bonus for average speed. It dies when it stops
+              earning ground, rolls off the edge, or drops into a gap, and the whole generation ends
+              early once nobody is making progress, so one crawler cannot hold everyone up.
+            </p>
+            <p>
+              The track is a design rather than a dice roll. Length, hills, ramps, gaps, camber and
+              road width, all in the Track panel, all packed into a code about twenty characters
+              long. Send someone yours and they drive the same course hole for hole, which is
+              something the original could not do: it had one kind of terrain, so you could never
+              ask whether a car built for hills could also clear a jump. Medals are fractions of the
+              course, so gold means the same thing on a savage track and a gentle one, and the
+              author medal means a car actually finished.
+            </p>
+            <p>
+              Today's track is the same one for everybody. It is derived from the date, so two
+              browsers agree on it with nothing in between them, and since a room is keyed to a
+              track code the daily is also the matchmaking: open the page, press join, and you
+              are in with whoever else is driving it. It resets at midnight UTC.
+            </p>
+            <p>
+              The Map of designs panel is a MAP-Elites archive, out of the quality diversity
+              literature. Every square is a kind of body, and each keeps the best car of that
+              shape ever seen this session, so designs the leaderboard forgets stay findable and
+              clickable. Switch Search to Illuminate and evolution starts breeding across the
+              map instead of only from the winners: measured over six tracks that fills about
+              40% more of the space and costs nothing on best distance.
+            </p>
+            <p>
+              Turn Crates up and the road gets cargo on it. They are not scenery: each one is a
+              real body with mass, so it tips, slides down the camber, stacks with its neighbour,
+              and gets shouldered aside by a car with enough momentum while stopping a lighter one
+              dead. That is the same solver the cars run, given something to solve, and it changes
+              what evolution is looking for: a hill is a fixed obstacle a population memorises, a
+              crate moves when you hit it.
+            </p>
+            <p>
+              The Room panel is the odd one. A genetic algorithm in one tab is alone: it climbs one
+              hill, settles into one local optimum, and waiting is the only way out, while somebody
+              else's tab is stuck somewhere entirely different holding the answer you needed. So
+              everyone on the same track code lands in the same room, and at the end of each
+              generation each tab offers its best car and takes one back. That is the island model,
+              with browsers as the islands. Turn on Colour by family and you can watch a line
+              arrive from someone else's machine and either take over or die out. It is peer to
+              peer with no server, nothing is stored, and it only happens if you press join.
+            </p>
+            <p>
+              Cars are not the only thing that crosses. The best run on the track is recorded and
+              plays back as a pale ghost racing alongside the pack, and in a room that ghost is
+              whoever is actually fastest, not whoever is nearest. When someone beats the track
+              their lap arrives and starts running on your screen, which is the part borrowed from
+              Trackmania: you are not reading that a number went up, you are watching a line you
+              have to beat. Race the ghost turns it on and off.
+            </p>
+            <p>
+              The flat mode is still here under 2D. It is the original problem, rebuilt on
+              planck.js, and it is a good place to watch the search when the 3D camera is too busy.
+              Each mode keeps its own records, since they are different problems on different
+              scales.
+            </p>
+            <p class="credits">
+              Physics by
+              <a href="https://github.com/erincatto/box3d" rel="noreferrer noopener">Box3D</a> via
+              <a href="https://github.com/monteslu/box3d-wasm" rel="noreferrer noopener"
+                >box3d-wasm</a
+              >, and <a href="https://piqnt.com/planck.js/" rel="noreferrer noopener">planck.js</a>
+              in the flat mode. Rendering by
+              <a href="https://threejs.org/" rel="noreferrer noopener">three.js</a>. Credit for the
+              original goes to rednuht.
+            </p>
+          </div>
         </details>
       </section>
     </div>

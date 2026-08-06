@@ -1,9 +1,9 @@
 {
-  "name": "genetic-cars",
+  "name": "boxcar3d",
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "A genetic algorithm car evolver in HTML5 canvas",
+  "description": "Cars that evolve their shape and the neural network that drives them, on Box3D physics",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,12 +11,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bench": "vitest run --dir bench --include \"**/*.bench.ts\" --testTimeout 3600000"
   },
   "dependencies": {
     "box3d-wasm": "^0.2.0",
     "planck": "^1.5.0",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "trystero": "^0.25.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

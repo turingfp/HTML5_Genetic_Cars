@@ -12,10 +12,7 @@ export class Ghost {
   private cursor = 0;
 
   private chassis: Pose = { x: 0, y: 0, angle: 0 };
-  private wheels: [Pose, Pose] = [
-    { x: 0, y: 0, angle: 0 },
-    { x: 0, y: 0, angle: 0 },
-  ];
+  private wheels: Pose[] = [];
   private frame: GhostFrame | null = null;
 
   get score(): number {
@@ -45,6 +42,7 @@ export class Ghost {
       def,
       frames: recorder.finish(),
       frameCount: recorder.frameCount,
+      wheelCount: recorder.wheelCount,
       score,
       generation,
     };
@@ -76,7 +74,7 @@ export class Ghost {
   current(): GhostFrame | null {
     const replay = this.replay;
     if (!replay) return null;
-    if (!readReplayFrame(replay, this.cursor, this.chassis, this.wheels[0], this.wheels[1])) {
+    if (!readReplayFrame(replay, this.cursor, this.chassis, this.wheels)) {
       return null;
     }
     if (!this.frame) {

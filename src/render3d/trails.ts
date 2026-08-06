@@ -2,7 +2,7 @@
  * Motion trails: the path each car has taken this generation.
  *
  * Watching twenty cars at once, the trails are what make the population
- * legible — you see the pack fan out, where the fast ones diverge from the
+ * legible. You see the pack fan out, where the fast ones diverge from the
  * pile, and exactly where a car went over the edge.
  */
 

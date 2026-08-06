@@ -3,6 +3,7 @@
  */
 
 import type { CarDef } from '../ga/genome';
+import { lineageColour } from '../ga/lineage';
 import type { Pose } from '../replay/recorder';
 import type { WorldSnapshot } from '../sim/simulation';
 import { surfaceIndexAt, type TrackDef } from '../sim/track';
@@ -20,10 +21,25 @@ import {
 export interface GhostFrame {
   def: CarDef;
   chassis: Pose;
-  wheels: [Pose, Pose];
+  wheels: readonly Pose[];
+}
+
+/** A style built from a family's hue, so a whole line reads as one colour. */
+function lineageStyle(lineage: number): CarStyle {
+  return {
+    body: lineageColour(lineage, 70, 60, 0.45),
+    stroke: lineageColour(lineage, 80, 72),
+    spoke: lineageColour(lineage, 70, 70, 0.28),
+    wheel: '#1e293b',
+    wheelStroke: lineageColour(lineage, 80, 72),
+    alpha: 1,
+  };
 }
 
 export class Renderer {
+  /** Colour cars by the family they descend from rather than by status. */
+  colourByLineage = false;
+
   readonly camera: Camera;
   private ctx: CanvasRenderingContext2D;
 
@@ -70,7 +86,7 @@ export class Renderer {
 
   /**
    * Terrain is drawn straight from the track data over the visible span, so
-   * there is no cross-frame drawing state to fall out of sync — the original
+   * there is no cross-frame drawing state to fall out of sync. The original
    * cached a "last drawn tile" index that it never reset, which made the
    * ground vanish at the start of each generation.
    */
@@ -83,21 +99,39 @@ export class Renderer {
 
     const floor = track.minY - 40;
 
-    ctx.beginPath();
-    ctx.moveTo(points[start]!.x, floor);
-    for (let i = start; i <= end; i++) {
-      ctx.lineTo(points[i]!.x, points[i]!.y);
+    // Surface point i is the left edge of tile i, so a run of solid tiles
+    // [from, to) is bounded by surface points from and to. Ground is drawn one
+    // run at a time rather than as a single polygon: a gap has to be a real
+    // hole with two edges you can see the bottom of, not a dip in a continuous
+    // skyline.
+    const ground = new Path2D();
+    const surfaceLine = new Path2D();
+    let runStart = -1;
+
+    const closeRun = (from: number, to: number) => {
+      if (to <= from) return;
+      ground.moveTo(points[from]!.x, floor);
+      for (let i = from; i <= to; i++) ground.lineTo(points[i]!.x, points[i]!.y);
+      ground.lineTo(points[to]!.x, floor);
+      ground.closePath();
+
+      surfaceLine.moveTo(points[from]!.x, points[from]!.y);
+      for (let i = from + 1; i <= to; i++) surfaceLine.lineTo(points[i]!.x, points[i]!.y);
+    };
+
+    for (let tile = start; tile <= end; tile++) {
+      const solid = track.tiles[tile]?.solid ?? false;
+      if (solid && runStart < 0) runStart = tile;
+      if (!solid && runStart >= 0) {
+        closeRun(runStart, tile);
+        runStart = -1;
+      }
     }
-    ctx.lineTo(points[end]!.x, floor);
-    ctx.closePath();
+    if (runStart >= 0) closeRun(runStart, end);
 
     // Clearly darker than the sky's lower stop, so the horizon always reads.
     ctx.fillStyle = '#0c1526';
-    ctx.fill();
-
-    const surfaceLine = new Path2D();
-    surfaceLine.moveTo(points[start]!.x, points[start]!.y);
-    for (let i = start + 1; i <= end; i++) surfaceLine.lineTo(points[i]!.x, points[i]!.y);
+    ctx.fill(ground);
 
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -153,12 +187,18 @@ export class Renderer {
 
       // Draw the leader last so it stays on top of the pack.
       if (i === snapshot.leaderIndex) continue;
-      const style: CarStyle = car.isElite ? ELITE_STYLE : NORMAL_STYLE;
+      const style: CarStyle = this.colourByLineage
+        ? lineageStyle(car.lineage)
+        : car.isElite
+          ? ELITE_STYLE
+          : NORMAL_STYLE;
       drawCar(ctx, carArt(car.def), car.chassis, car.wheels, style, camera.zoom);
     }
 
     const leader = snapshot.cars[snapshot.leaderIndex];
     if (leader?.alive && leader.def) {
+      // The leader keeps its own colour even when families are on, since
+      // losing track of who is winning costs more than the extra hue tells you.
       drawCar(ctx, carArt(leader.def), leader.chassis, leader.wheels, LEADER_STYLE, camera.zoom);
     }
   }

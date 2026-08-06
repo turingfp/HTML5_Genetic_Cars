@@ -12,7 +12,13 @@ import {
   DEFAULT_MUTATION_RATE,
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
+  DEFAULT_DIVERSITY_PRESSURE,
+  DEFAULT_IMMIGRANTS,
+  DEFAULT_MIGRANTS,
+  MAX_DIVERSITY_PRESSURE,
   MAX_ELITE_COUNT,
+  MAX_IMMIGRANTS,
+  MAX_MIGRANTS,
   MAX_POPULATION_SIZE,
   MIN_POPULATION_SIZE,
   PHYSICS_HZ,
@@ -21,18 +27,46 @@ import {
   TOP_SCORE_COUNT,
   type Speed,
 } from '../config';
-import { randomSeed } from '../core/rng';
-import type { CarScore, GAParams } from '../ga/evolution';
+import { hasWebGL } from '../core/device';
+import { Room, suggestName, type Peer } from '../net/room';
+import {
+  GHOST_MAX_WIRE_FRAMES,
+  packCar,
+  packCar3D,
+  unpackCar,
+  unpackCar3D,
+  type GhostMessage,
+} from '../net/wire';
+import {
+  dailySpec,
+  decodeSpec,
+  defaultSpec,
+  encodeSpec,
+  medalFor,
+  normaliseSpec,
+  type TrackSpec,
+} from '../track/spec';
+import { MedalBar } from '../ui/medalbar';
+import { RoomPanel } from '../ui/roompanel';
+import { TrackEditor } from '../ui/trackeditor';
+import { Workshop } from '../ui/workshop';
+import { rngFromSeed } from '../core/rng';
+import type { CarScore, GAParams, SearchMode } from '../ga/evolution';
 import type { CarDef } from '../ga/genome';
-import type { Car3DDef } from '../ga/genome3d';
+import { randomCar3D, type Car3DDef } from '../ga/genome3d';
+import { BrainView } from '../render/brainview';
 import { Chart, type GenerationStats } from '../render/chart';
+import { ArchiveView } from '../render/archiveview';
+import type { EliteArchive } from '../ga/archive';
+import { GenePool, type GenePoolCar } from '../render/genepool';
 import { Minimap } from '../render/minimap';
 import { Renderer } from '../render/renderer';
 import { Ghost } from '../replay/ghost';
+import { Ghost3D } from '../replay/ghost3d';
 import { Simulation, createSnapshot, type WorldSnapshot } from '../sim/simulation';
 import { Leaderboard } from '../ui/leaderboard';
 import { Panel } from '../ui/panel';
-import { HealthStrip, Readouts } from '../ui/stats';
+import { HealthStrip, Readouts, countLiving } from '../ui/stats';
 import {
   loadHallOfFame,
   loadSettings,
@@ -40,6 +74,7 @@ import {
   saveSettings,
   seedFromUrl,
   syncSeedToUrl,
+  trackCodeFromUrl,
   type HallOfFameEntry,
 } from '../ui/storage';
 import type { Renderer3D } from '../render3d/renderer3d';
@@ -57,42 +92,113 @@ function element<T extends HTMLElement>(id: string): T {
   return el as T;
 }
 
+/**
+ * How long the 3D engine gets to come up before we give up on it.
+ *
+ * Generous, because it is compiling half a megabyte of WebAssembly and a slow
+ * phone on a slow connection deserves the room. The point is not to be strict,
+ * it is that a hang has to end in something rather than nothing: without this
+ * a stalled instantiation leaves a dark canvas behind a "warming up" banner
+ * for as long as you care to wait.
+ */
+const LOAD_3D_TIMEOUT_MS = 25_000;
+
+/** The promise, or a rejection once the deadline passes. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
 export class App {
   private sim: Simulation;
   private loop: Loop;
   private renderer: Renderer;
   private minimap: Minimap;
   private chart: Chart;
+  private brainView: BrainView;
+  private genePool: GenePool;
+  private archiveView: ArchiveView<CarDef | Car3DDef>;
   private healthStrip: HealthStrip;
   private leaderboard: Leaderboard;
   private readouts: Readouts;
   private panel: Panel;
   private ghost = new Ghost();
+  /** The same idea in 3D, which is the mode this opens in. */
+  private ghost3d = new Ghost3D();
+  /** Whether the 3D ghost is drawn. It races whether or not you watch it. */
+  private showGhost3d = true;
   private banner: HTMLElement;
+  /** Why 3D last refused to start, if it did. */
+  private failure3d: string | null = null;
+
+  private trackEditor: TrackEditor;
+  private roomPanel: RoomPanel;
+  private medalBar: MedalBar;
+
+  /** The design now being driven, as opposed to the one in the editor. */
+  private spec: TrackSpec;
+
+  /** The room, once someone has asked to join one. */
+  private room: Room | null = null;
+  /** Cars this tab has evaluated all session, which is its share of the work. */
+  private evaluations = 0;
+  /** What this tab calls itself in the room. */
+  private roomName = 'you';
 
   private snapshot: WorldSnapshot = createSnapshot();
-  private history: GenerationStats[] = [];
-  private hallOfFame: HallOfFameEntry[] = [];
+  /**
+   * Records are kept per mode. The two modes are different problems with
+   * different score scales, so sharing a leaderboard let a 2D run stand as the
+   * 3D record, and the chart restarted every time you switched.
+   */
+  private records: Record<Mode, { history: GenerationStats[]; hall: HallOfFameEntry[]; best: number }> = {
+    '2d': { history: [], hall: [], best: 0 },
+    '3d': { history: [], hall: [], best: 0 },
+  };
 
   /**
-   * The 3D mode runs on Box3D, which has to compile WebAssembly first, so it
-   * is built the first time it is asked for and then kept.
+   * 3D is where this starts. Box3D has to compile its WebAssembly before a
+   * world can exist, so the mode is set from the first frame while `boot()`
+   * fetches the engine behind a banner. Until that resolves `sim3d` is null and
+   * the 3D draw path simply does nothing.
    */
-  private mode: Mode = '2d';
+  private mode: Mode = '3d';
   private sim3d: Simulation3D | null = null;
   private renderer3d: Renderer3D | null = null;
   private snapshot3d: World3DSnapshot = createSnapshot3D();
   private loading3d = false;
 
+  /** Colour cars by the family they descend from rather than by status. */
+  private colourByLineage = false;
+
   /** -1 follows whoever is in front; otherwise the index of a chosen car. */
   private cameraTarget = -1;
   private replaying = false;
   private lastDrawTime = performance.now();
-  private bestEver = 0;
 
   constructor() {
     const stored = loadSettings();
-    const seed = seedFromUrl() ?? randomSeed();
+    // A link may carry the whole design, or only a seed if it predates codes,
+    // or neither.
+    const shared = decodeSpec(trackCodeFromUrl() ?? '');
+    // With no link to follow, the daily. Opening on a track nobody else is
+    // driving means the room is empty and the ghost is your own, which is the
+    // whole feature switched off by default. A seed in the URL still wins,
+    // since that is someone deliberately asking for a particular course.
+    const seedInUrl = seedFromUrl();
+    this.spec = shared ?? (seedInUrl ? defaultSpec(seedInUrl) : dailySpec(new Date()));
+    const seed = this.spec.seed;
 
     this.sim = new Simulation({
       trackSeed: seed,
@@ -105,22 +211,47 @@ export class App {
         mutationRate: clamp(stored.mutationRate ?? DEFAULT_MUTATION_RATE, 0, 1),
         mutationSize: clamp(stored.mutationSize ?? DEFAULT_MUTATION_SIZE, 0.01, 1),
         eliteCount: clamp(stored.eliteCount ?? DEFAULT_ELITE_COUNT, 0, MAX_ELITE_COUNT),
+        diversityPressure: clamp(
+          stored.diversityPressure ?? DEFAULT_DIVERSITY_PRESSURE,
+          0,
+          MAX_DIVERSITY_PRESSURE,
+        ),
+        immigrants: clamp(stored.immigrants ?? DEFAULT_IMMIGRANTS, 0, MAX_IMMIGRANTS),
+        migrants: clamp(stored.migrants ?? DEFAULT_MIGRANTS, 0, MAX_MIGRANTS),
+        ...(stored.goal ? { goal: stored.goal } : {}),
+        ...(stored.selection ? { selection: stored.selection } : {}),
+        ...(stored.search === 'illuminate' ? { search: stored.search } : {}),
+        ...(stored.crossoverMode ? { crossoverMode: stored.crossoverMode } : {}),
       },
     });
+
+    // The constructor only takes a seed, so a shared design is applied here.
+    // Cheap: nothing has been stepped yet.
+    this.sim.setTrackSpec(this.spec);
 
     this.renderer = new Renderer(element<HTMLCanvasElement>('view'));
     this.minimap = new Minimap(element<HTMLCanvasElement>('minimap'));
     this.chart = new Chart(element<HTMLCanvasElement>('chart'));
+    this.brainView = new BrainView(element<HTMLCanvasElement>('brain'));
+    this.genePool = new GenePool(element<HTMLCanvasElement>('genepool'));
+    this.archiveView = new ArchiveView<CarDef | Car3DDef>(element<HTMLCanvasElement>('archive'));
+    this.archiveView.onPick = (def) => this.raceFromArchive(def);
+    // The hover preview draws the flat silhouette either way: it is the shape
+    // the descriptor axes measure, and a 3D car is that silhouette extruded.
+    this.archiveView.toSilhouette = (def) => ('base' in def ? def.base : def);
     this.healthStrip = new HealthStrip(element<HTMLCanvasElement>('health'));
     this.leaderboard = new Leaderboard(element('leaderboard'));
     this.readouts = new Readouts(document);
     this.banner = element('banner');
 
     this.renderer.camera.setZoom(stored.zoom ?? this.renderer.camera.fitZoom());
-    this.hallOfFame = loadHallOfFame();
-    this.bestEver = this.hallOfFame[0]?.score ?? 0;
-    this.leaderboard.render(this.hallOfFame);
-    this.chart.draw(this.history);
+    for (const mode of ['2d', '3d'] as const) {
+      const hall = loadHallOfFame(mode);
+      this.records[mode].hall = hall;
+      this.records[mode].best = hall[0]?.score ?? 0;
+    }
+    this.leaderboard.render(this.current.hall);
+    this.chart.draw(this.current.history);
 
     this.panel = new Panel({
       onSpeed: (speed) => this.setSpeed(speed),
@@ -129,8 +260,12 @@ export class App {
       onMutationSize: (size) => this.setParam('mutationSize', size),
       onEliteCount: (count) => this.setParam('eliteCount', count),
       onPopulationSize: (size) => this.setParam('populationSize', size),
-      onRebuildTrack: (nextSeed) => this.rebuildTrack(nextSeed),
-      onRandomSeed: () => this.panel.setSeed(randomSeed()),
+      onGoal: (goal) => this.setParam('goal', goal),
+      onSelection: (method) => this.setParam('selection', method),
+      onSearch: (mode) => this.setSearch(mode),
+      onCrossover: (mode) => this.setParam('crossoverMode', mode),
+      onDiversity: (pressure) => this.setParam('diversityPressure', pressure),
+      onImmigrants: (count) => this.setParam('immigrants', count),
       onResetPopulation: () => this.resetPopulation(),
       onToggleReplay: () => this.toggleReplay(),
       onFollowLeader: () => this.setCameraTarget(-1),
@@ -139,9 +274,27 @@ export class App {
     });
 
     this.panel.setValues(this.sim.params);
-    this.panel.setSeed(this.sim.trackSeed);
     this.readouts.set('seed', this.sim.trackSeed);
-    syncSeedToUrl(this.sim.trackSeed);
+    syncSeedToUrl(this.sim.trackSeed, encodeSpec(this.spec));
+
+    this.medalBar = new MedalBar(element('medals'));
+    this.trackEditor = new TrackEditor(element('track-editor'), this.spec, {
+      onBuild: (spec) => this.buildTrack(spec),
+      onCopy: (code) => void this.copyCode(code),
+    });
+    this.trackEditor.onCodePasted = (code) => this.loadCode(code);
+
+    new Workshop(element('workshop'), {
+      onRace: (def) => this.raceHandBuilt(def),
+      onCopyLeader: () => this.leaderSilhouette(),
+    });
+
+    this.roomPanel = new RoomPanel(element('room-panel'), suggestName(Math.random), {
+      onJoin: (name) => void this.joinRoom(name),
+      onLeave: () => void this.leaveRoom(),
+      onMigrants: (count) => this.setParam('migrants', count),
+    });
+    this.roomPanel.setMigrants(this.sim.params.migrants);
 
     this.healthStrip.onSelect = (index) => this.setCameraTarget(index);
     this.leaderboard.onSelect = (entry) => this.exportCar(entry);
@@ -178,10 +331,16 @@ export class App {
         this.renderer3d.showTrails = (event.target as HTMLInputElement).checked;
       }
     });
+    element<HTMLInputElement>('toggle-lineage').addEventListener('change', (event) => {
+      this.colourByLineage = (event.target as HTMLInputElement).checked;
+      if (this.renderer3d) this.renderer3d.colourByLineage = this.colourByLineage;
+      this.renderer.colourByLineage = this.colourByLineage;
+    });
 
     this.installInputHandlers();
     this.snapCameraToLeader();
     this.loop.start();
+    void this.boot();
   }
 
   private installInputHandlers(): void {
@@ -220,6 +379,9 @@ export class App {
   private step(): void {
     if (this.mode === '3d') {
       this.sim3d?.step();
+      // One physics step of ghost, so it keeps pace at every speed setting
+      // including max mode, where many steps happen per drawn frame.
+      this.ghost3d.advance(1);
       return;
     }
     if (this.replaying) {
@@ -262,6 +424,53 @@ export class App {
     );
     this.healthStrip.draw(this.snapshot);
     this.updateReadouts(this.snapshot);
+
+    const index = this.watchedIndex(this.snapshot.leaderIndex);
+    const watched = this.snapshot.cars[index];
+    this.setWatchedLabel(index);
+    this.brainView.draw(
+      watched
+        ? {
+            brain: watched.def?.brain ?? null,
+            activations: watched.activations,
+            memory: watched.memory,
+            alive: watched.alive,
+          }
+        : null,
+    );
+    this.genePool.draw(
+      this.snapshot.cars.map(
+        (car): GenePoolCar => ({
+          brain: car.def?.brain ?? null,
+          alive: car.alive,
+          isElite: car.isElite,
+        }),
+      ),
+    );
+    this.drawArchive(this.sim.archive, this.snapshot.generation);
+  }
+
+  /** The map of designs, plus its filled-cell readout. */
+  private drawArchive(archive: EliteArchive<CarDef> | EliteArchive<Car3DDef>, generation: number): void {
+    this.archiveView.draw(archive as EliteArchive<CarDef | Car3DDef>, generation);
+    this.readouts.set('archive', String(archive.filled));
+    this.readouts.set('qd', String(Math.round(archive.qdScore)));
+  }
+
+  /**
+   * Which car the driver panel is showing: whichever one the camera follows, so
+   * the network on screen belongs to the car you are watching.
+   */
+  private watchedIndex(leaderIndex: number): number {
+    return this.cameraTarget >= 0 ? this.cameraTarget : leaderIndex;
+  }
+
+  /** Name of the car in the driver panel, so it is clear whose network it is. */
+  private setWatchedLabel(index: number): void {
+    this.readouts.set(
+      'brain-target',
+      index < 0 ? 'no car' : this.cameraTarget >= 0 ? `car ${index}` : `car ${index}, leader`,
+    );
   }
 
   private draw3d(dt: number): void {
@@ -271,6 +480,7 @@ export class App {
 
     sim.snapshot(this.snapshot3d);
     renderer.draw(sim.track, this.snapshot3d, dt);
+    renderer.drawGhost(this.showGhost3d ? this.ghost3d.current() : null);
     this.minimap.draw(
       sim.track.profile,
       this.markersFrom3D(),
@@ -280,6 +490,31 @@ export class App {
     this.healthStrip.draw(this.snapshot3d);
     this.updateReadouts(this.snapshot3d);
     this.readouts.set('deaths', String(renderer.graveyard.count));
+
+    const index = this.watchedIndex(this.snapshot3d.leaderIndex);
+    const watched = this.snapshot3d.cars[index];
+    this.setWatchedLabel(index);
+    this.brainView.draw(
+      watched
+        ? {
+            // A 3D car keeps its driver on the silhouette it was extruded from.
+            brain: watched.def?.base.brain ?? null,
+            activations: watched.activations,
+            memory: watched.memory,
+            alive: watched.alive,
+          }
+        : null,
+    );
+    this.genePool.draw(
+      this.snapshot3d.cars.map(
+        (car): GenePoolCar => ({
+          brain: car.def?.base.brain ?? null,
+          alive: car.alive,
+          isElite: car.isElite,
+        }),
+      ),
+    );
+    this.drawArchive(sim.archive, this.snapshot3d.generation);
   }
 
   private markersFrom2D(): MinimapMarker[] {
@@ -316,16 +551,22 @@ export class App {
     this.readouts.set('generation', String(snapshot.generation));
     this.readouts.set('alive', `${snapshot.aliveCount}/${snapshot.cars.length}`);
     this.readouts.set('distance', `${snapshot.bestX.toFixed(1)}m`);
-    // The ghost holds the best run on this track, including the one in progress,
-    // so the headline number moves as soon as a record is set.
-    this.readouts.set('best', Math.max(this.bestEver, this.ghost.score, 0).toFixed(1));
+    // In the flat mode the ghost holds the best run on this track, including
+    // one still in progress, so the headline moves the moment a record is set.
+    // The 3D mode has no ghost, so it reports its own recorded best.
+    const live = this.mode === '2d' ? this.ghost.score : -Infinity;
+    this.readouts.set('best', Math.max(this.current.best, live, 0).toFixed(1));
     this.readouts.set('sps', String(this.loop.stepsPerSecond));
+    this.readouts.set('lineages', String(countLiving(snapshot)));
+    // The bar rewards the cars on screen right now, so it moves as they drive
+    // rather than jumping once a generation.
+    this.medalBar.update(snapshot.bestX, this.trackLength);
 
     if (this.replaying) {
       const seconds = (this.ghost.position / PHYSICS_HZ).toFixed(1);
       const total = (this.ghost.frameCount / PHYSICS_HZ).toFixed(1);
       this.showBanner(
-        `Replaying the best run — scored ${this.ghost.score.toFixed(1)} in generation ${this.ghost.generation} · ${seconds}s / ${total}s`,
+        `Replaying the best run · scored ${this.ghost.score.toFixed(1)} in generation ${this.ghost.generation} · ${seconds}s / ${total}s`,
       );
     } else {
       this.hideBanner();
@@ -340,13 +581,15 @@ export class App {
     const sorted = scores.slice().sort((a, b) => b.score - a.score);
     const half = Math.max(1, Math.ceil(sorted.length / 2));
 
-    this.history.push({
+    const archive = this.mode === '3d' && this.sim3d ? this.sim3d.archive : this.sim.archive;
+    this.current.history.push({
       generation,
       best: sorted[0]!.score,
       eliteAverage: sorted.slice(0, half).reduce((a, s) => a + s.score, 0) / half,
       average: sorted.reduce((a, s) => a + s.score, 0) / sorted.length,
+      qd: archive.qdScore,
     });
-    this.chart.draw(this.history);
+    this.chart.draw(this.current.history);
 
     // One entry per generation, so the board tracks progress rather than
     // filling up with every incremental record inside a single round.
@@ -355,15 +598,45 @@ export class App {
     // Trails belong to a generation; the graveyard deliberately does not.
     this.renderer3d?.resetTrails();
 
+    // A whole new set of weights, so the throttled heatmap should not wait.
+    this.genePool.invalidate();
+
     // Each generation races the ghost from the start line again.
     this.ghost.rewind();
+    this.ghost3d.rewind();
+    this.syncGhostButton();
+
+    this.evaluations += scores.length;
+    this.medalBar.update(sorted[0]!.distance, this.trackLength);
+    this.shareWithRoom(sorted[0]!, generation);
+  }
+
+  /**
+   * Tell the room how the generation went, and offer its winner.
+   *
+   * Once per generation rather than continuously: a champion is only worth
+   * sending when it has finished being evaluated, and a leaderboard that
+   * updates twenty times a second is harder to read than one that updates
+   * when something happens.
+   */
+  private shareWithRoom(best: CarScore<CarDef | Car3DDef>, generation: number): void {
+    const room = this.room;
+    if (!room) return;
+    room.report(generation, best.distance, this.evaluations);
+    room.offerChampion(
+      'base' in best.def ? packCar3D(best.def) : packCar(best.def),
+      best.distance,
+      generation,
+    );
+    this.renderRoom();
   }
 
   private recordHallOfFame(best: CarScore<CarDef | Car3DDef>, generation: number): void {
     // A 3D car carries its silhouette inside `base`; the board and its
     // thumbnails only ever deal in silhouettes.
     const def = 'base' in best.def ? best.def.base : best.def;
-    this.hallOfFame.push({
+    const record = this.current;
+    record.hall.push({
       def: structuredClone(def),
       score: best.score,
       distance: best.distance,
@@ -371,18 +644,23 @@ export class App {
       trackSeed: this.sim.trackSeed,
       recordedAt: Date.now(),
     });
-    this.hallOfFame.sort((a, b) => b.score - a.score);
-    this.hallOfFame = this.hallOfFame.slice(0, TOP_SCORE_COUNT);
-    this.bestEver = Math.max(this.bestEver, best.score);
-    this.leaderboard.render(this.hallOfFame);
-    saveHallOfFame(this.hallOfFame);
+    record.hall.sort((a, b) => b.score - a.score);
+    record.hall = record.hall.slice(0, TOP_SCORE_COUNT);
+    record.best = Math.max(record.best, best.score);
+    this.leaderboard.render(record.hall);
+    saveHallOfFame(this.mode, record.hall);
   }
 
   private clearHallOfFame(): void {
-    this.hallOfFame = [];
-    this.bestEver = 0;
-    this.leaderboard.render(this.hallOfFame);
-    saveHallOfFame(this.hallOfFame);
+    this.current.hall = [];
+    this.current.best = 0;
+    this.leaderboard.render(this.current.hall);
+    saveHallOfFame(this.mode, this.current.hall);
+  }
+
+  /** Records belonging to whichever mode is on screen. */
+  private get current() {
+    return this.records[this.mode];
   }
 
   private exportCar(entry: HallOfFameEntry): void {
@@ -390,7 +668,7 @@ export class App {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `genetic-car-${entry.score.toFixed(0)}.json`;
+    link.download = `boxcar3d-${entry.score.toFixed(0)}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -410,6 +688,22 @@ export class App {
     this.sim.params[key] = value;
     if (this.sim3d) this.sim3d.params[key] = value;
     this.persist();
+  }
+
+  /**
+   * Switch between the hill-climbing GA and MAP-Elites.
+   *
+   * Just a parameter, but worth a banner: the effect is a map filling in
+   * rather than a number going up, and someone who flips it deserves to be
+   * told where to look.
+   */
+  private setSearch(mode: SearchMode): void {
+    this.setParam('search', mode);
+    this.flashBanner(
+      mode === 'illuminate'
+        ? 'Illuminating: parents now come from the map of designs below the chart.'
+        : 'Climbing: parents are the current winners again.',
+    );
   }
 
   private setSpeed(speed: Speed): void {
@@ -432,7 +726,30 @@ export class App {
     if (this.renderer3d && index < 0) this.renderer3d.followLeader = true;
   }
 
+  /**
+   * The ghost button, which means different things in the two modes.
+   *
+   * The flat mode replays the best run on its own, with the pack hidden. In 3D
+   * the ghost is already out there racing the living cars every generation,
+   * which is the thing worth watching, so the button turns it on and off
+   * instead of taking over the view.
+   */
   private toggleReplay(): void {
+    if (this.mode === '3d') {
+      if (!this.ghost3d.available) {
+        this.flashBanner('No finished run yet. The ghost appears after the first generation.');
+        return;
+      }
+      this.showGhost3d = !this.showGhost3d;
+      this.panel.setReplaying(this.showGhost3d, '3d');
+      this.flashBanner(
+        this.showGhost3d
+          ? `Racing ${this.ghost3d.who || 'the best run so far'}: ${this.ghost3d.score.toFixed(1)}m.`
+          : 'Ghost hidden.',
+      );
+      return;
+    }
+
     if (!this.replaying && !this.ghost.available) {
       this.flashBanner('No finished run to replay yet.');
       return;
@@ -450,8 +767,9 @@ export class App {
       this.renderer3d?.clearHistory();
     } else this.sim.resetPopulation();
 
-    this.history = [];
-    this.chart.draw(this.history);
+    // Only this mode's chart restarts; the other mode's run is untouched.
+    this.current.history = [];
+    this.chart.draw(this.current.history);
     this.ghost.clear();
     this.minimap.exploredX = 0;
     this.replaying = false;
@@ -460,23 +778,361 @@ export class App {
     if (this.mode === '2d') this.snapCameraToLeader();
   }
 
-  private rebuildTrack(seed: string): void {
-    this.sim.setTrack(seed);
-    // Both worlds follow the same seed, so switching mode shows the same course.
-    this.sim3d?.setTrack(seed);
-    // Deaths were recorded against the old course and mean nothing on this one.
+  /**
+   * Build a designed track and start the run over.
+   *
+   * The track is the experiment, so changing it invalidates everything
+   * measured against the old one: both modes' charts, the ghost, the death
+   * map. Keeping any of it would be comparing runs on different courses.
+   */
+  private buildTrack(spec: TrackSpec): void {
+    this.spec = normaliseSpec(spec);
+    this.sim.setTrackSpec(this.spec);
+    // Both worlds follow the same design, so switching mode shows the same
+    // course rather than a different one that happens to share a seed.
+    this.sim3d?.setTrackSpec(this.spec);
     this.renderer3d?.clearHistory();
-    this.history = [];
-    this.chart.draw(this.history);
+    this.records['2d'].history = [];
+    this.records['3d'].history = [];
+    this.chart.draw(this.current.history);
     this.ghost.clear();
+    this.ghost3d.clear();
+    this.renderer3d?.clearGhost();
     this.minimap.exploredX = 0;
     this.replaying = false;
     this.panel.setReplaying(false);
-    this.panel.setSeed(seed);
-    this.readouts.set('seed', seed);
-    syncSeedToUrl(seed);
+    this.trackEditor.setSpec(this.spec);
+    this.medalBar.reset();
+    this.readouts.set('seed', this.spec.seed);
+    syncSeedToUrl(this.spec.seed, encodeSpec(this.spec));
     this.setCameraTarget(-1);
     if (this.mode === '2d') this.snapCameraToLeader();
+
+    // A room is a room *for a track*. Changing course means leaving the people
+    // driving the old one, which is better than silently comparing scores
+    // across different terrain.
+    if (this.room && this.room.code !== encodeSpec(this.spec)) {
+      void this.leaveRoom();
+      this.flashBanner('New track, so you have left the old room.');
+    }
+  }
+
+  /** Load a pasted code, if it is one. */
+  private loadCode(code: string): void {
+    const spec = decodeSpec(code);
+    if (!spec) {
+      this.flashBanner('That does not look like a track code.');
+      return;
+    }
+    this.buildTrack(spec);
+    this.flashBanner('Loaded a shared track.');
+  }
+
+  private async copyCode(code: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(code);
+      this.flashBanner('Track code copied.');
+    } catch {
+      // Clipboard access needs a permission the page may not have. The code is
+      // in a text field either way, so this is a nudge rather than a failure.
+      this.flashBanner('Could not copy. The code is in the box, select it.');
+    }
+  }
+
+  /**
+   * Put a hand-built car into whichever world is on screen.
+   *
+   * The 3D mode needs the two genes a silhouette has no opinion about, so they
+   * are taken from a random 3D car rather than invented: a body someone drew
+   * flat says nothing about how wide it should be.
+   */
+  /**
+   * A clicked cell of the map joins the next generation.
+   *
+   * The def is already the right shape for the mode whose archive drew it,
+   * since each simulation keeps its own map.
+   */
+  private raceFromArchive(def: CarDef | Car3DDef): void {
+    if (this.mode === '3d' && this.sim3d) {
+      this.sim3d.enqueue(structuredClone(def) as Car3DDef);
+    } else {
+      this.sim.enqueue(structuredClone(def) as CarDef);
+    }
+    this.flashBanner('That design is back in. It races with the next generation.');
+  }
+
+  private raceHandBuilt(def: CarDef): void {
+    if (this.mode === '3d' && this.sim3d) {
+      const shape = randomCar3D(rngFromSeed(String(Math.random())));
+      this.sim3d.enqueue({ ...shape, base: def });
+    } else {
+      this.sim.enqueue(def);
+    }
+    this.flashBanner('Your car is in. It starts with the next generation.');
+  }
+
+  /** The silhouette of whatever is currently in front, for copying. */
+  private leaderSilhouette(): CarDef | null {
+    if (this.mode === '3d') {
+      const car = this.snapshot3d.cars[this.snapshot3d.leaderIndex];
+      return car?.def ? structuredClone(car.def.base) : null;
+    }
+    const car = this.snapshot.cars[this.snapshot.leaderIndex];
+    return car?.def ? structuredClone(car.def) : null;
+  }
+
+  /** How long the current course is, which is what medals measure against. */
+  private get trackLength(): number {
+    return this.mode === '3d' && this.sim3d
+      ? this.sim3d.track.profile.length
+      : this.sim.track.length;
+  }
+
+  /* ── The room ────────────────────────────────────────────────────────── */
+
+  /**
+   * Join the room for this track.
+   *
+   * Only ever from a button. This announces the tab to strangers over public
+   * relays, so it is not something to do on someone's behalf.
+   */
+  private async joinRoom(name: string): Promise<void> {
+    if (this.room) return;
+    this.roomPanel.setStatus('connecting');
+    const code = encodeSpec(this.spec);
+    try {
+      this.roomName = name;
+      this.room = await Room.join(
+        code,
+        { name, mode: this.mode },
+        this.trackLength,
+        {
+          onChange: () => this.renderRoom(),
+          onChampion: (peer) => this.onChampionArrived(peer),
+          onGhost: (peer, ghost) => this.onGhostArrived(peer, ghost),
+          onTrouble: (reason) => this.roomPanel.setTrouble(reason),
+        },
+      );
+      this.roomPanel.setStatus('online');
+      this.renderRoom();
+      this.attachMigrantSource();
+      this.room.setGhostSource(() => this.ghostOffer());
+      // Whatever this tab has already driven is worth sending: the room may
+      // have been joined ten generations in.
+      this.room.sendGhost();
+    } catch (error) {
+      this.room = null;
+      this.roomPanel.setStatus(
+        'failed',
+        error instanceof Error ? error.message : 'Could not reach the room.',
+      );
+    }
+  }
+
+  private async leaveRoom(): Promise<void> {
+    const room = this.room;
+    this.room = null;
+    this.sim.migrantSource = null;
+    if (this.sim3d) this.sim3d.migrantSource = null;
+    this.roomPanel.setStatus('offline');
+    await room?.leave();
+  }
+
+  /**
+   * Point both simulations at the room for their migrants.
+   *
+   * Each mode unpacks with its own validator, so a 3D car can never end up in
+   * the flat world or the other way round, and anything malformed is dropped
+   * rather than fixed.
+   */
+  private attachMigrantSource(): void {
+    this.sim.migrantSource = () => {
+      const offer = this.room?.takeMigrant('2d', Math.random);
+      return offer ? unpackCar(offer.car) : null;
+    };
+    if (this.sim3d) {
+      this.sim3d.migrantSource = () => {
+        const offer = this.room?.takeMigrant('3d', Math.random);
+        return offer ? unpackCar3D(offer.car) : null;
+      };
+    }
+  }
+
+  private onChampionArrived(peer: Peer): void {
+    if (this.sim.params.migrants <= 0) return;
+    this.flashBanner(`A car arrived from ${peer.name}.`);
+  }
+
+  /**
+   * This tab's ghost, packed for anyone who asks.
+   *
+   * Trimmed to the wire limit rather than refused for being long, because a
+   * ghost that stops a little early still shows you the line, and a peer who
+   * gets nothing learns nothing.
+   */
+  private ghostOffer(): GhostMessage | null {
+    const replay = this.ghost3d.share();
+    if (!replay) return null;
+    const count = Math.min(replay.frameCount, GHOST_MAX_WIRE_FRAMES);
+    if (count === 0) return null;
+    return {
+      meta: {
+        car: packCar3D(replay.def),
+        score: replay.score,
+        generation: replay.generation,
+        count,
+        mode: '3d',
+      },
+      frames: replay.frames,
+    };
+  }
+
+  /**
+   * Someone else's lap, arriving to be raced.
+   *
+   * Held to exactly the same bar as our own: it replaces the ghost only if it
+   * went further. Otherwise the fastest car on the track would be whoever
+   * happened to send last.
+   */
+  private onGhostArrived(peer: Peer, ghost: GhostMessage): void {
+    if (ghost.meta.mode !== '3d') return;
+    const def = unpackCar3D(ghost.meta.car);
+    if (!def) return;
+    const adopted = this.ghost3d.adopt({
+      def,
+      frames: ghost.frames,
+      frameCount: ghost.meta.count,
+      score: ghost.meta.score,
+      generation: ghost.meta.generation,
+      who: peer.name,
+    });
+    if (!adopted) return;
+    this.syncGhostButton();
+    if (this.mode !== '3d') return;
+    this.flashBanner(`${peer.name} set a faster lap: ${ghost.meta.score.toFixed(1)}m. Racing it.`);
+  }
+
+  private renderRoom(): void {
+    if (!this.room) return;
+    const best = Math.max(this.current.best, this.liveBest());
+    this.roomPanel.render(
+      this.room.peers(),
+      {
+        name: this.roomName,
+        best,
+        generation: this.generationNow(),
+        medal: medalFor(best, this.trackLength),
+      },
+      this.room.totalEvaluations(this.evaluations),
+    );
+  }
+
+  /** Furthest anything has reached this generation, in the mode on screen. */
+  private liveBest(): number {
+    return this.mode === '3d' ? this.snapshot3d.bestX : this.snapshot.bestX;
+  }
+
+  private generationNow(): number {
+    return this.mode === '3d' ? (this.sim3d?.generation ?? 0) : this.sim.generation;
+  }
+
+  /**
+   * Bring up the 3D world, fetching Box3D and three.js the first time.
+   * Returns false if this browser cannot run it.
+   */
+  private async ensure3D(): Promise<boolean> {
+    if (this.sim3d) return true;
+    if (this.loading3d) return false;
+
+    // Ask before fetching. On a device with no WebGL the failure would
+    // otherwise happen inside three.js, after half a megabyte of it had
+    // already come down the wire.
+    if (!hasWebGL()) return false;
+
+    this.loading3d = true;
+    this.showBanner('Warming up the 3D physics engine.');
+    try {
+      // Box3D and three.js are only fetched for 3D, so the flat mode does not
+      // have to carry them.
+      const [{ Simulation3D }, { Renderer3D }] = await withTimeout(
+        Promise.all([import('../sim3d/simulation3d'), import('../render3d/renderer3d')]),
+        LOAD_3D_TIMEOUT_MS,
+        'Loading the 3D engine timed out.',
+      );
+      this.sim3d = await withTimeout(
+        Simulation3D.create({
+          trackSeed: this.sim.trackSeed,
+          params: { ...this.sim.params },
+        }),
+        LOAD_3D_TIMEOUT_MS,
+        'Starting the 3D physics world timed out.',
+      );
+      this.renderer3d = new Renderer3D(element<HTMLCanvasElement>('view3d'));
+      this.renderer3d.onContextChange = (lost) => {
+        // A lost context is a frozen picture, not a stopped simulation, so say
+        // what happened rather than letting it look like a hang.
+        if (lost) this.showBanner('The browser dropped the 3D view. Waiting for it to come back.');
+        else this.flashBanner('3D view is back.');
+      };
+      this.sim3d.onCarDeath = (car) => {
+        const recorder = this.sim3d?.recorders[this.sim3d.cars.indexOf(car)];
+        // A finished run becomes the ghost if it beat everything before it,
+        // and a new best is worth telling the room about.
+        if (
+          recorder &&
+          this.ghost3d.consider(recorder, car.def, car.score, this.sim3d!.generation)
+        ) {
+          this.syncGhostButton();
+          this.room?.sendGhost();
+        }
+        if (!car.deathPosition) return;
+        this.renderer3d?.addDeath({
+          // Along the course and across the road as it actually died, but
+          // pinned to the road height so the field reads as a death map.
+          x: car.deathPosition.x,
+          y: car.deathRoadY,
+          z: car.deathPosition.z,
+          generation: this.sim3d!.generation,
+          fellOff: car.fellOff,
+        });
+      };
+      this.sim3d.onGenerationEnd = (scores, generation) =>
+        this.onGenerationEnd(scores, generation);
+      // The 3D world may be built long after a room was joined, so it wires
+      // itself up rather than waiting to be told.
+      if (this.room) this.attachMigrantSource();
+      return true;
+    } catch (error) {
+      console.error(error);
+      // Kept so the fallback can say what actually happened rather than the
+      // generic "3D will not start", which tells nobody anything.
+      this.failure3d = error instanceof Error ? error.message : String(error);
+      return false;
+    } finally {
+      this.loading3d = false;
+      this.hideBanner();
+    }
+  }
+
+  /**
+   * Open in 3D, which is what this rebuild is for.
+   *
+   * The engine is WebAssembly and takes a moment to compile, so the canvas sits
+   * dark behind a banner until it is ready rather than showing the flat mode
+   * for a second and yanking it away. If it cannot start at all, the flat mode
+   * is a genuine fallback rather than an error page.
+   */
+  private async boot(): Promise<void> {
+    if (await this.ensure3D()) {
+      await this.enter3D();
+      return;
+    }
+    await this.setMode('2d');
+    this.flashBanner(
+      this.failure3d
+        ? `3D did not start, so here is the flat mode. ${this.failure3d}`
+        : '3D will not start in this browser, so here is the flat mode.',
+    );
   }
 
   /**
@@ -486,81 +1142,103 @@ export class App {
   private async setMode(mode: Mode): Promise<void> {
     if (mode === this.mode || this.loading3d) return;
 
-    const view2d = element<HTMLCanvasElement>('view');
-    const view3d = element<HTMLCanvasElement>('view3d');
+    if (mode === '3d') {
+      if (!(await this.ensure3D())) {
+        this.flashBanner(
+          this.failure3d
+            ? `Could not start 3D mode. ${this.failure3d}`
+            : 'Could not start 3D mode in this browser.',
+        );
+        return;
+      }
+      await this.enter3D();
+      return;
+    }
 
+    this.markModeButtons('2d');
+    element<HTMLCanvasElement>('view3d').hidden = true;
+    element<HTMLCanvasElement>('view').hidden = false;
+    element('view3d-controls').hidden = true;
+    element('view2d-note').hidden = false;
+    this.mode = '2d';
+    this.onModeChanged();
+    this.showRecords();
+    this.minimap.exploredX = 0;
+    this.renderer.camera.resize();
+    this.snapCameraToLeader();
+    this.loop.resetClock();
+  }
+
+  private markModeButtons(mode: Mode): void {
     for (const button of document.querySelectorAll<HTMLButtonElement>('#modes button')) {
       button.setAttribute('aria-pressed', button.dataset.mode === mode ? 'true' : 'false');
     }
+  }
 
-    if (mode === '3d') {
-      if (!this.sim3d) {
-        this.loading3d = true;
-        this.flashBanner('Loading the 3D physics engine…');
-        try {
-          // Box3D and three.js are only fetched when someone asks for 3D, so
-          // the flat mode does not carry them.
-          const [{ Simulation3D }, { Renderer3D }] = await Promise.all([
-            import('../sim3d/simulation3d'),
-            import('../render3d/renderer3d'),
-          ]);
-          this.sim3d = await Simulation3D.create({
-            trackSeed: this.sim.trackSeed,
-            params: { ...this.sim.params },
-          });
-          this.renderer3d = new Renderer3D(view3d);
-          this.sim3d.onCarDeath = (car) => {
-            if (!car.deathPosition) return;
-            this.renderer3d?.addDeath({
-              // Along the course and across the road as it actually died, but
-              // pinned to the road height so the field reads as a death map.
-              x: car.deathPosition.x,
-              y: car.deathRoadY,
-              z: car.deathPosition.z,
-              generation: this.sim3d!.generation,
-              fellOff: car.fellOff,
-            });
-          };
-        } catch (error) {
-          this.loading3d = false;
-          this.flashBanner('Could not start 3D mode in this browser.');
-          console.error(error);
-          return;
-        }
-        this.sim3d.onGenerationEnd = (scores, generation) =>
-          this.onGenerationEnd(scores, generation);
-        this.loading3d = false;
-      }
-      // Keep both worlds on the same course and settings.
-      if (this.sim3d.trackSeed !== this.sim.trackSeed) this.sim3d.setTrack(this.sim.trackSeed);
-      Object.assign(this.sim3d.params, this.sim.params);
+  private async enter3D(): Promise<void> {
+    if (!this.sim3d) return;
+    this.markModeButtons('3d');
 
-      view2d.hidden = true;
-      view3d.hidden = false;
-      element('view3d-controls').hidden = false;
-      this.mode = '3d';
-      this.history = [];
-      this.chart.draw(this.history);
-      this.minimap.exploredX = 0;
-      this.sim3d.snapshot(this.snapshot3d);
-      this.renderer3d?.snapTo(
-        this.snapshot3d.leader.x,
-        this.snapshot3d.leader.y,
-        this.snapshot3d.leader.z,
-      );
-    } else {
-      view3d.hidden = true;
-      view2d.hidden = false;
-      element('view3d-controls').hidden = true;
-      this.mode = '2d';
-      this.history = [];
-      this.chart.draw(this.history);
-      this.minimap.exploredX = 0;
-      this.renderer.camera.resize();
-      this.snapCameraToLeader();
+    // Keep both worlds on the same course and settings. Comparing the whole
+    // design rather than the seed: two tracks can share a seed and differ in
+    // every other way now.
+    if (encodeSpec(this.sim3d.track.spec) !== encodeSpec(this.spec)) {
+      this.sim3d.setTrackSpec(this.spec);
     }
+    Object.assign(this.sim3d.params, this.sim.params);
 
+    element<HTMLCanvasElement>('view').hidden = true;
+    element<HTMLCanvasElement>('view3d').hidden = false;
+    element('view3d-controls').hidden = false;
+    element('view2d-note').hidden = true;
+    this.mode = '3d';
+    this.onModeChanged();
+    this.showRecords();
+    this.minimap.exploredX = 0;
+    this.sim3d.snapshot(this.snapshot3d);
+    this.renderer3d?.snapTo(
+      this.snapshot3d.leader.x,
+      this.snapshot3d.leader.y,
+      this.snapshot3d.leader.z,
+    );
     this.loop.resetClock();
+  }
+
+  /**
+   * Settle everything that depends on which mode is on screen.
+   *
+   * Scores only compare within a mode and the two courses are different
+   * lengths, so the medal bar restarts and the room is told which one this tab
+   * is now running.
+   */
+  private onModeChanged(): void {
+    this.syncGhostButton();
+    this.trackEditor.setMode(this.mode);
+    this.medalBar.reset();
+    this.room?.setSelf({ name: this.roomName, mode: this.mode });
+    this.room?.setTrackLength(this.trackLength);
+    this.renderRoom();
+  }
+
+  /**
+   * Label the ghost button for what is actually on screen.
+   *
+   * "Hide the ghost" while there is no ghost to hide is a lie the button told
+   * from the first frame, since showing one is the default and nothing has
+   * finished a run yet.
+   */
+  private syncGhostButton(): void {
+    if (this.mode === '3d') {
+      this.panel.setReplaying(this.showGhost3d && this.ghost3d.available, '3d');
+    } else {
+      this.panel.setReplaying(this.replaying, '2d');
+    }
+  }
+
+  /** Show the chart and leaderboard belonging to the mode now on screen. */
+  private showRecords(): void {
+    this.chart.draw(this.current.history);
+    this.leaderboard.render(this.current.hall);
   }
 
   private snapCameraToLeader(): void {
@@ -603,9 +1281,12 @@ export class App {
 
   /** Handle exposed for end-to-end tests. */
   debug() {
+    const ready = this.mode === '2d' || this.sim3d !== null;
     const active = this.mode === '3d' && this.sim3d ? this.sim3d : this.sim;
     return {
       mode: this.mode,
+      /** False while the 3D engine is still compiling on first load. */
+      ready,
       generation: active.generation,
       frame: active.frame,
       alive: active.aliveCount,
@@ -615,7 +1296,7 @@ export class App {
       speed: this.loop.speed,
       seed: this.sim.trackSeed,
       replaying: this.replaying,
-      hallOfFame: this.hallOfFame.length,
+      hallOfFame: this.current.hall.length,
       timeStep: TIME_STEP,
       // Cheap fingerprint of the terrain, so tests can assert that a seed
       // rebuilds the same course without comparing rendered pixels.

@@ -1,15 +1,17 @@
 /* Design tokens. The simulation renders on a dark canvas, so the interface is
-   built dark-first; the light theme keeps the same hues at higher lightness. */
+   built dark first and stays dark in both themes rather than framing a night
+   scene in white. */
 :root {
   color-scheme: dark;
 
-  --bg: #070b14;
-  --surface: #0f172a;
-  --surface-raised: #16233c;
-  --border: #1e293b;
-  --border-strong: #334155;
+  --bg: #060911;
+  --bg-glow: #0d1830;
+  --surface: #0e1626;
+  --surface-raised: #17223a;
+  --border: #1d2942;
+  --border-strong: #33415c;
 
-  --text: #e2e8f0;
+  --text: #e6edf7;
   --text-muted: #94a3b8;
   --text-faint: #64748b;
 
@@ -18,17 +20,15 @@
   --elite: #60a5fa;
   --leader: #fde047;
   --normal: #f87171;
+  --positive: #4ade80;
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 10px 30px rgb(0 0 0 / 45%);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 18px 44px rgb(0 0 0 / 50%);
 
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-
-/* The simulation canvas is a night scene with its own fixed palette, so the
-   interface stays dark in both themes rather than framing it in white. */
 
 * {
   box-sizing: border-box;
@@ -41,7 +41,10 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(1100px 620px at 18% -12%, var(--bg-glow), transparent 62%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   line-height: 1.5;
@@ -50,42 +53,53 @@ body {
 
 a {
   color: var(--accent);
+  text-underline-offset: 2px;
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
   font-weight: 650;
   letter-spacing: -0.01em;
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
 }
 
-h2 {
-  font-size: 0.78rem;
+h1 span {
+  color: var(--accent);
+}
+
+h2,
+h3 {
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 
+/* Two columns that each stack their own panels. A single grid over every panel
+   looked tidier in the markup but left holes: a short panel in one column held
+   the row open while the tall one beside it finished. */
 .app {
-  max-width: 1440px;
+  max-width: 1520px;
   margin: 0 auto;
-  padding: clamp(12px, 2vw, 28px);
+  padding: clamp(12px, 2vw, 26px);
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 336px;
   grid-template-areas:
     "header header"
-    "stage controls"
-    "map controls"
-    "chart stats"
-    "hall stats"
-    "about about";
+    "stage  side"
+    "main   side"
+    "about  about";
+  align-items: start;
 }
 
 .app-header {
@@ -95,48 +109,71 @@ h2 {
   gap: 12px;
   align-items: flex-end;
   justify-content: space-between;
+  padding-bottom: 2px;
 }
 
-.stage {
-  grid-area: stage;
-  position: relative;
-  min-height: 0;
+.column-main,
+.column-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
 }
 
-.controls-panel {
-  grid-area: controls;
-  align-self: start;
+.column-main {
+  grid-area: main;
 }
-.stats-panel {
-  grid-area: stats;
-  align-self: start;
-}
-.map-panel {
-  grid-area: map;
-}
-.chart-panel {
-  grid-area: chart;
-}
-.hall-panel {
-  grid-area: hall;
+.column-side {
+  grid-area: side;
 }
 .about-panel {
   grid-area: about;
 }
 
-@media (max-width: 980px) {
+.stage {
+  grid-area: stage;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* Controls sit at the top of the sidebar, above the readouts. They are what
+   you came to touch; Cars, Fitness and the course map are ambient and read
+   fine further down. Before this the track editor and the room were the very
+   last panels on the page, below everything else, which is a good way to build
+   features nobody ever finds. */
+.controls-panel {
+  order: -1;
+  gap: 2px;
+}
+
+@media (max-width: 1040px) {
+  /* One column, with the columns dissolved so panels can interleave. The
+     desktop grid put the whole settings stack between the stage and the
+     science, which on a phone meant scrolling past every slider before the
+     first genuinely novel thing appeared. Order here is the pitch: the world,
+     the map of designs, the knobs you touch, then the ambient readouts. */
   .app {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "header"
-      "stage"
-      "controls"
-      "map"
-      "stats"
-      "chart"
-      "hall"
-      "about";
+    display: flex;
+    flex-direction: column;
   }
+
+  .column-main,
+  .column-side {
+    display: contents;
+  }
+
+  .app-header { order: 0; }
+  .stage { order: 1; }
+  .archive-panel { order: 2; }
+  .controls-panel { order: 3; }
+  .chart-panel { order: 4; }
+  .brain-panel { order: 5; }
+  .stats-panel { order: 6; }
+  .map-panel { order: 7; }
+  .hall-panel { order: 8; }
+  .about-panel { order: 9; }
 }
 
 /* ── Surfaces ───────────────────────────────────────────────────────────── */
@@ -145,31 +182,62 @@ h2 {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 15px;
   display: grid;
-  gap: 12px;
+  gap: 11px;
   align-content: start;
+  min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-note {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+.subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+
+.brand {
+  min-width: 0;
 }
 
 .tagline {
-  margin: 4px 0 0;
+  margin: 5px 0 0;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  max-width: 52ch;
 }
 
 .header-meta {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .seed-chip {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 5px 12px;
+  white-space: nowrap;
 }
 
 .seed-chip code {
@@ -179,14 +247,19 @@ h2 {
 
 /* ── Stage ──────────────────────────────────────────────────────────────── */
 
+.stage-view {
+  position: relative;
+  min-height: 0;
+}
+
 #view,
 #view3d {
   display: block;
   width: 100%;
-  height: clamp(320px, 52vh, 620px);
+  height: clamp(340px, 56vh, 660px);
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: #0b1120;
+  background: #080d18;
   box-shadow: var(--shadow);
   touch-action: none;
 }
@@ -197,6 +270,30 @@ h2 {
 }
 
 .mode-switch {
+  flex: 0 0 auto;
+}
+
+.mode-switch button {
+  min-width: 46px;
+  font-weight: 600;
+}
+
+.transport {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px;
+}
+
+.transport #speeds {
+  flex: 1 1 180px;
+}
+
+.transport .ghost-button {
   flex: 0 0 auto;
 }
 
@@ -222,13 +319,9 @@ h2 {
   color: var(--text-faint);
 }
 
-#view3d-controls[hidden] {
+#view3d-controls[hidden],
+#view2d-note[hidden] {
   display: none;
-}
-
-.mode-switch button {
-  min-width: 44px;
-  font-weight: 600;
 }
 
 .hud {
@@ -242,54 +335,49 @@ h2 {
 }
 
 .hud-item {
-  background: rgb(8 12 22 / 68%);
-  border: 1px solid rgb(148 163 184 / 18%);
+  background: rgb(6 9 17 / 72%);
+  border: 1px solid rgb(148 163 184 / 16%);
   border-radius: var(--radius-sm);
   padding: 5px 10px;
-  min-width: 74px;
-  backdrop-filter: blur(6px);
+  min-width: 76px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .hud-label {
   display: block;
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #94a3b8;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
 }
 
 .hud-value {
   display: block;
   font-family: var(--font-mono);
   font-size: 0.95rem;
-  color: #e2e8f0;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 .stage-banner {
   position: absolute;
   inset: auto 12px 12px 12px;
-  background: rgb(8 12 22 / 82%);
+  background: rgb(6 9 17 / 86%);
   border: 1px solid rgb(148 163 184 / 22%);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 0.85rem;
-  color: #e2e8f0;
+  color: var(--text);
   text-align: center;
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
-.speed-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .segmented {
   display: flex;
-  flex: 1;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -341,7 +429,8 @@ button:active {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -351,7 +440,7 @@ input:focus-visible {
   border-color: var(--accent-strong);
   color: #04121f;
   font-weight: 600;
-  min-width: 84px;
+  min-width: 88px;
 }
 
 .ghost-button {
@@ -359,9 +448,12 @@ input:focus-visible {
 }
 
 .ghost-button.small {
-  font-size: 0.75rem;
-  padding: 5px 10px;
-  justify-self: start;
+  font-size: 0.72rem;
+  padding: 4px 9px;
+}
+
+.secondary-button {
+  width: 100%;
 }
 
 .control {
@@ -388,6 +480,7 @@ input:focus-visible {
   margin: 0;
   font-size: 0.72rem;
   color: var(--text-faint);
+  line-height: 1.45;
 }
 
 input[type="range"] {
@@ -396,8 +489,25 @@ input[type="range"] {
   cursor: pointer;
 }
 
+select {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.84rem;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+select:hover {
+  border-color: var(--accent);
+}
+
 input[type="text"] {
   width: 100%;
+  min-width: 0;
   background: var(--surface-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -417,24 +527,77 @@ input[type="text"] {
   padding: 8px 11px;
 }
 
-.button-stack {
-  display: grid;
+/* Buttons side by side that must give way rather than overflow. */
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
+}
+
+.button-row button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ── Collapsible sections ───────────────────────────────────────────────── */
+
+details {
+  border-bottom: 1px solid var(--border);
+}
+
+.controls-panel details:last-of-type {
+  border-bottom: none;
+}
+
+summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary::after {
+  content: "";
+  margin-left: auto;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-faint);
+  border-bottom: 1.5px solid var(--text-faint);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 140ms ease;
+}
+
+details[open] > summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+summary:hover h2 {
+  color: var(--text);
+}
+
+.details-body {
+  display: grid;
+  gap: 11px;
+  padding-bottom: 13px;
 }
 
 /* ── Canvases in panels ─────────────────────────────────────────────────── */
 
 #health {
   width: 100%;
-  height: 260px;
+  height: 248px;
   display: block;
 }
 
 #minimap {
   width: 100%;
-  height: 96px;
+  height: 92px;
   display: block;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -442,13 +605,153 @@ input[type="text"] {
 
 #chart {
   width: 100%;
-  height: 190px;
+  height: 184px;
   display: block;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
 
+#brain {
+  width: 100%;
+  height: 208px;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgb(8 13 24 / 60%);
+}
+
+.archive-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 14px;
+  position: relative;
+}
+
+.archive-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.metric-value {
+  font-family: ui-monospace, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright, #e2e8f0);
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--text-dim, #94a3b8);
+}
+
+.archive-preview[hidden] {
+  /* The class sets display: flex, which outranks the browser's own
+     [hidden] rule; without this the empty card sits over the map forever. */
+  display: none;
+}
+
+.archive-preview {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgb(8 13 24 / 92%);
+  pointer-events: none;
+  font-size: 11px;
+  color: var(--text-dim, #94a3b8);
+  white-space: nowrap;
+}
+
+#archive {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgb(8 13 24 / 60%);
+}
+
+@media (max-width: 640px) {
+  .archive-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+#genepool {
+  width: 100%;
+  height: 116px;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgb(8 13 24 / 60%);
+  image-rendering: pixelated;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgb(148 163 184 / 45%);
+  background: rgb(8 13 24 / 90%);
+}
+
+.swatch-hidden {
+  background: rgb(74 222 128 / 35%) !important;
+}
+
+.swatch-out {
+  width: 11px !important;
+  height: 11px !important;
+  background: rgb(74 222 128 / 70%) !important;
+}
+
+/* Half a ring, matching the loop drawn over a hidden node. */
+.swatch-loop {
+  width: 11px !important;
+  height: 6px !important;
+  border-radius: 11px 11px 0 0 !important;
+  border-bottom: none !important;
+  background: transparent !important;
+  border-color: rgb(74 222 128 / 75%) !important;
+}
+
 /* ── Hall of fame ───────────────────────────────────────────────────────── */
+
+/* Ten entries make the sidebar much taller than the stage beside it, so the
+   board scrolls rather than stretching the column past everything else. */
+#leaderboard {
+  max-height: 340px;
+  overflow-y: auto;
+  margin: -2px;
+  padding: 2px;
+}
 
 .leaderboard-list {
   list-style: none;
@@ -482,7 +785,7 @@ input[type="text"] {
   width: 44px;
   height: 44px;
   border-radius: 6px;
-  background: rgb(11 17 32 / 70%);
+  background: rgb(8 13 24 / 70%);
 }
 
 .entry-text {
@@ -515,19 +818,15 @@ input[type="text"] {
 
 /* ── About ──────────────────────────────────────────────────────────────── */
 
-.about-panel summary {
-  cursor: pointer;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+.about-panel {
+  padding: 4px 15px;
 }
 
-.about-panel p {
-  margin: 10px 0 0;
+.about-body p {
+  margin: 0 0 12px;
   color: var(--text-muted);
   font-size: 0.88rem;
-  max-width: 72ch;
+  max-width: 76ch;
 }
 
 .credits {
@@ -539,4 +838,225 @@ input[type="text"] {
   * {
     transition: none !important;
   }
+}
+
+/* ── Track editor ───────────────────────────────────────────────────────── */
+
+.track-preview {
+  display: block;
+  width: 100%;
+  height: 74px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.track-summary {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sliders built by the editor, matching the hand-written controls above it. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-label {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.field-value {
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A knob that does nothing in the mode now running. Still usable: it will
+   matter again the moment you switch back. */
+.field.is-inert {
+  opacity: 0.45;
+}
+
+/* ── Medals ─────────────────────────────────────────────────────────────── */
+
+.medal-bar {
+  position: absolute;
+  inset: auto 12px 12px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.medal-rail {
+  position: relative;
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(148 163 184 / 18%);
+  overflow: visible;
+}
+
+.medal-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+}
+
+.medal-mark {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 11px;
+  border-radius: 1px;
+  opacity: 0.75;
+}
+
+.medal-caption {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgb(2 6 16 / 90%);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The banner sits where the medal bar does, so it lifts clear when shown. */
+.stage-banner:not([hidden]) ~ .medal-bar,
+.medal-bar:has(~ .stage-banner:not([hidden])) {
+  bottom: 46px;
+}
+
+/* ── Room ───────────────────────────────────────────────────────────────── */
+
+.room-status {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.room-status[data-status='online'] {
+  color: #4ade80;
+}
+
+.room-status[data-status='failed'] {
+  color: #fca5a5;
+}
+
+.swarm-line {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.peer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.peer-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.peer-row.is-self {
+  background: rgb(56 189 248 / 10%);
+}
+
+.peer-medal {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+}
+
+.peer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.peer-stat {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Fatal errors ───────────────────────────────────────────────────────── */
+
+/*
+ * Shown by main.ts when start-up throws. Deliberately plain: it has to render
+ * on a browser that has just proved it cannot run the rest of the page.
+ */
+.fatal {
+  display: block;
+  margin: 12px;
+  padding: 14px 16px;
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+  background: #1a0a0a;
+  color: #fecaca;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.fatal strong {
+  display: block;
+  color: #fca5a5;
+  margin-bottom: 4px;
+}
+
+.fatal span {
+  display: block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.fatal small {
+  display: block;
+  margin-top: 8px;
+  color: #f8b4b4;
+  opacity: 0.75;
+}
+
+.room-status[data-status='trouble'] {
+  color: #fbbf24;
+}
+
+/* ── Workshop ───────────────────────────────────────────────────────────── */
+
+.workshop-canvas {
+  display: block;
+  width: 100%;
+  height: 210px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  /* The corners are dragged, so the browser must not steal the gesture for
+     scrolling. */
+  touch-action: none;
+}
+
+.workshop-canvas:active {
+  cursor: grabbing;
 }

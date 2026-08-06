@@ -7,6 +7,7 @@
  */
 
 import { SPEEDS, type Speed } from '../config';
+import type { CrossoverMode, FitnessGoal, SearchMode, SelectionMethod } from '../ga/evolution';
 
 export interface PanelCallbacks {
   onSpeed: (speed: Speed) => void;
@@ -15,8 +16,12 @@ export interface PanelCallbacks {
   onMutationSize: (size: number) => void;
   onEliteCount: (count: number) => void;
   onPopulationSize: (size: number) => void;
-  onRebuildTrack: (seed: string) => void;
-  onRandomSeed: () => void;
+  onGoal: (goal: FitnessGoal) => void;
+  onSelection: (method: SelectionMethod) => void;
+  onSearch: (mode: SearchMode) => void;
+  onCrossover: (mode: CrossoverMode) => void;
+  onDiversity: (pressure: number) => void;
+  onImmigrants: (count: number) => void;
   onResetPopulation: () => void;
   onToggleReplay: () => void;
   onFollowLeader: () => void;
@@ -34,12 +39,18 @@ export class Panel {
   private speedButtons = new Map<Speed, HTMLButtonElement>();
   private pauseButton: HTMLButtonElement;
   private replayButton: HTMLButtonElement;
-  private seedInput: HTMLInputElement;
 
   readonly mutationRate: HTMLInputElement;
   readonly mutationSize: HTMLInputElement;
   readonly elites: HTMLInputElement;
   readonly population: HTMLInputElement;
+  readonly diversity: HTMLInputElement;
+  readonly immigrants: HTMLInputElement;
+
+  private goal: HTMLSelectElement;
+  private selection: HTMLSelectElement;
+  private search: HTMLSelectElement;
+  private crossover: HTMLSelectElement;
 
   constructor(callbacks: PanelCallbacks) {
     const speeds = required<HTMLDivElement>('speeds');
@@ -83,18 +94,36 @@ export class Panel {
       callbacks.onPopulationSize(Number(this.population.value));
     });
 
-    this.seedInput = required<HTMLInputElement>('seed-input');
-    required('rebuild').addEventListener('click', () => {
-      const seed = this.seedInput.value.trim();
-      if (seed) callbacks.onRebuildTrack(seed);
-    });
-    this.seedInput.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      const seed = this.seedInput.value.trim();
-      if (seed) callbacks.onRebuildTrack(seed);
+    this.diversity = required<HTMLInputElement>('diversity');
+    this.diversity.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onDiversity(Number(this.diversity.value) / 100);
     });
 
-    required('randomize').addEventListener('click', callbacks.onRandomSeed);
+    this.immigrants = required<HTMLInputElement>('immigrants');
+    this.immigrants.addEventListener('input', () => {
+      this.syncLabels();
+      callbacks.onImmigrants(Number(this.immigrants.value));
+    });
+
+    this.goal = required<HTMLSelectElement>('goal');
+    this.goal.addEventListener('change', () => callbacks.onGoal(this.goal.value as FitnessGoal));
+
+    this.selection = required<HTMLSelectElement>('selection');
+    this.selection.addEventListener('change', () =>
+      callbacks.onSelection(this.selection.value as SelectionMethod),
+    );
+
+    this.search = required<HTMLSelectElement>('search');
+    this.search.addEventListener('change', () =>
+      callbacks.onSearch(this.search.value as SearchMode),
+    );
+
+    this.crossover = required<HTMLSelectElement>('crossover');
+    this.crossover.addEventListener('change', () =>
+      callbacks.onCrossover(this.crossover.value as CrossoverMode),
+    );
+
     required('reset').addEventListener('click', callbacks.onResetPopulation);
     required('follow').addEventListener('click', callbacks.onFollowLeader);
     required('share').addEventListener('click', callbacks.onShare);
@@ -111,12 +140,19 @@ export class Panel {
     this.pauseButton.textContent = paused ? 'Resume' : 'Pause';
   }
 
-  setReplaying(replaying: boolean): void {
-    this.replayButton.textContent = replaying ? 'Back to evolving' : 'Watch best run';
-  }
-
-  setSeed(seed: string): void {
-    this.seedInput.value = seed;
+  /**
+   * Label the ghost button for what pressing it will do.
+   *
+   * The two modes mean different things by it: the flat mode takes over the
+   * view to replay the best run, while 3D leaves the ghost racing the living
+   * cars and only shows or hides it.
+   */
+  setReplaying(on: boolean, mode: '2d' | '3d' = '2d'): void {
+    if (mode === '3d') {
+      this.replayButton.textContent = on ? 'Hide the ghost' : 'Race the ghost';
+      return;
+    }
+    this.replayButton.textContent = on ? 'Back to evolving' : 'Watch best run';
   }
 
   /** Reflect restored settings into the inputs without firing callbacks. */
@@ -125,11 +161,23 @@ export class Panel {
     mutationSize: number;
     eliteCount: number;
     populationSize: number;
+    diversityPressure: number;
+    immigrants: number;
+    goal: FitnessGoal;
+    selection: SelectionMethod;
+    search: SearchMode;
+    crossoverMode: CrossoverMode;
   }): void {
     this.mutationRate.value = String(Math.round(values.mutationRate * 100));
     this.mutationSize.value = String(Math.round(values.mutationSize * 100));
     this.elites.value = String(values.eliteCount);
     this.population.value = String(values.populationSize);
+    this.diversity.value = String(Math.round(values.diversityPressure * 100));
+    this.immigrants.value = String(values.immigrants);
+    this.goal.value = values.goal;
+    this.search.value = values.search;
+    this.selection.value = values.selection;
+    this.crossover.value = values.crossoverMode;
     this.syncLabels();
   }
 
@@ -143,5 +191,7 @@ export class Panel {
     set('mutation-size', `${this.mutationSize.value}%`);
     set('elites', this.elites.value);
     set('population', this.population.value);
+    set('diversity', `${this.diversity.value}%`);
+    set('immigrants', this.immigrants.value);
   }
 }

@@ -14,9 +14,9 @@ export interface CarArt {
   outline: Path2D;
   /** The triangle fan, drawn faintly so the chassis reads as constructed. */
   spokes: Path2D;
-  wheelRadius: [number, number];
-  /** 0 = lightest wheel, 1 = heaviest. */
-  wheelWeight: [number, number];
+  wheelRadius: number[];
+  /** 0 = lightest wheel, 1 = heaviest. One per wheel. */
+  wheelWeight: number[];
   /** Bounding radius, used to frame thumbnails. */
   extent: number;
 }
@@ -47,9 +47,9 @@ export function carArt(def: CarDef): CarArt {
   const art: CarArt = {
     outline,
     spokes,
-    wheelRadius: [def.wheelRadius[0], def.wheelRadius[1]],
-    wheelWeight: [weight(def.wheelDensity[0]), weight(def.wheelDensity[1])],
-    extent: extent + Math.max(def.wheelRadius[0], def.wheelRadius[1]),
+    wheelRadius: def.wheels.map((w) => w.radius),
+    wheelWeight: def.wheels.map((w) => weight(w.density)),
+    extent: extent + Math.max(0, ...def.wheels.map((w) => w.radius)),
   };
   artCache.set(def, art);
   return art;
@@ -108,14 +108,15 @@ export function drawCar(
   ctx: CanvasRenderingContext2D,
   art: CarArt,
   chassis: Pose,
-  wheels: [Pose, Pose],
+  wheels: readonly Pose[],
   style: CarStyle,
   pixelsPerMetre: number,
 ): void {
   const hairline = 1.5 / pixelsPerMetre;
   ctx.globalAlpha = style.alpha;
 
-  for (let i = 0; i < 2; i++) {
+  const wheelCount = Math.min(wheels.length, art.wheelRadius.length);
+  for (let i = 0; i < wheelCount; i++) {
     const wheel = wheels[i]!;
     const radius = art.wheelRadius[i]!;
     ctx.save();
@@ -177,10 +178,10 @@ export function drawThumbnail(
   ctx.translate(size / 2, size / 2);
   ctx.scale(scale, -scale);
 
-  const wheels: [Pose, Pose] = [
-    { ...def.vertices[def.wheelVertex[0]!]!, angle: 0 },
-    { ...def.vertices[def.wheelVertex[1]!]!, angle: 0 },
-  ];
+  const wheels: Pose[] = def.wheels.map((w) => ({
+    ...def.vertices[w.vertex]!,
+    angle: 0,
+  }));
   drawCar(ctx, art, { x: 0, y: 0, angle: 0 }, wheels, style, scale);
   ctx.restore();
 }

@@ -2,7 +2,7 @@
  * Minimal typings and loader for box3d-wasm.
  *
  * The package ships no TypeScript declarations, so this describes just the
- * surface the simulation uses. Box3D is Erin Catto's 3D engine — the same
+ * surface the simulation uses. Box3D is Erin Catto's 3D engine, the same
  * lineage as the Box2D the original used, two dimensions later.
  */
 
@@ -82,7 +82,7 @@ type Box3DFactory = () => Promise<Box3DModule>;
 let modulePromise: Promise<Box3DModule> | null = null;
 
 /**
- * Load and initialise the WebAssembly module. Safe to call repeatedly — the
+ * Load and initialise the WebAssembly module. Safe to call repeatedly, since the
  * same instance is shared, since compiling the module is not cheap.
  */
 export function loadBox3D(): Promise<Box3DModule> {

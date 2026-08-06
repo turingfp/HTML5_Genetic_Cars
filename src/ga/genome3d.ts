@@ -20,10 +20,12 @@ import type { Rng } from '../core/rng';
 import {
   cloneCar,
   crossover,
+  genomeDistance,
   mutate,
   mutateValue,
   randomCar,
   type CarDef,
+  type CrossoverMode,
   type MutationParams,
 } from './genome';
 import type { GenomeOps } from './evolution';
@@ -49,9 +51,15 @@ export function cloneCar3D(def: Car3DDef): Car3DDef {
   return { base: cloneCar(def.base), halfWidth: def.halfWidth, wheelGap: def.wheelGap };
 }
 
-export function crossover3D(rng: Rng, a: Car3DDef, b: Car3DDef): Car3DDef {
+export function crossover3D(
+  rng: Rng,
+  a: Car3DDef,
+  b: Car3DDef,
+  mode: CrossoverMode = 'two-point',
+): Car3DDef {
+  if (mode === 'none') return cloneCar3D(rng() < 0.5 ? a : b);
   return {
-    base: crossover(rng, a.base, b.base),
+    base: crossover(rng, a.base, b.base, mode),
     // The two width genes are inherited independently of the silhouette.
     halfWidth: rng() < 0.5 ? a.halfWidth : b.halfWidth,
     wheelGap: rng() < 0.5 ? a.wheelGap : b.wheelGap,
@@ -75,16 +83,24 @@ export function mutate3D(rng: Rng, def: Car3DDef, params: MutationParams): Car3D
   return def;
 }
 
+/** As `genomeDistance`, plus the two genes that only exist in three dimensions. */
+export function genomeDistance3D(a: Car3DDef, b: Car3DDef): number {
+  const body = genomeDistance(a.base, b.base);
+  const dw = (a.halfWidth - b.halfWidth) / CHASSIS_HALF_WIDTH_RANGE;
+  const dg = (a.wheelGap - b.wheelGap) / WHEEL_GAP_RANGE;
+  // Averaged in as two more terms alongside the silhouette's.
+  return Math.sqrt((body * body * 21 + dw * dw + dg * dg) / 23);
+}
+
 export const car3DOps: GenomeOps<Car3DDef> = {
   random: randomCar3D,
   crossover: crossover3D,
   mutate: mutate3D,
   clone: cloneCar3D,
+  distance: genomeDistance3D,
 };
 
-/**
- * The 16 corners of the chassis hull: the silhouette mirrored to both sides.
- */
+/** The chassis hull: the silhouette mirrored to both sides. */
 export function chassisHullPoints(def: Car3DDef): { x: number; y: number; z: number }[] {
   const points: { x: number; y: number; z: number }[] = [];
   for (const v of def.base.vertices) {
@@ -94,12 +110,15 @@ export function chassisHullPoints(def: Car3DDef): { x: number; y: number; z: num
   return points;
 }
 
-/** Where each of the four wheels sits, in chassis-local space. */
-export function wheelMounts(def: Car3DDef): { x: number; y: number; z: number; wheel: 0 | 1 }[] {
-  const mounts: { x: number; y: number; z: number; wheel: 0 | 1 }[] = [];
-  for (const wheel of [0, 1] as const) {
-    const v = def.base.vertices[def.base.wheelVertex[wheel]!]!;
-    const z = def.halfWidth + def.wheelGap;
+/**
+ * Where each wheel sits, in chassis-local space. Every wheel of the silhouette
+ * becomes a mirrored pair, so a two wheeler has four and a four wheeler eight.
+ */
+export function wheelMounts(def: Car3DDef): { x: number; y: number; z: number; wheel: number }[] {
+  const mounts: { x: number; y: number; z: number; wheel: number }[] = [];
+  const z = def.halfWidth + def.wheelGap;
+  for (let wheel = 0; wheel < def.base.wheels.length; wheel++) {
+    const v = def.base.vertices[def.base.wheels[wheel]!.vertex]!;
     mounts.push({ x: v.x, y: v.y, z: -z, wheel });
     mounts.push({ x: v.x, y: v.y, z, wheel });
   }

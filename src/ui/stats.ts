@@ -8,13 +8,15 @@
 
 /**
  * The subset of a snapshot the readouts need, which both the flat and the 3D
- * simulations satisfy — their snapshots differ only in how poses are shaped.
+ * simulations satisfy. Their snapshots differ only in how poses are shaped.
  */
 export interface StatsCar {
   alive: boolean;
   isElite: boolean;
   health01: number;
   maxX: number;
+  /** Which founding line this car descends from. */
+  lineage: number;
 }
 
 export interface StatsView {
@@ -23,6 +25,15 @@ export interface StatsView {
   bestX: number;
   leaderIndex: number;
   cars: StatsCar[];
+}
+
+/** How many distinct family lines still have a car alive. */
+export function countLiving(view: StatsView): number {
+  const lines = new Set<number>();
+  for (const car of view.cars) {
+    if (car.alive) lines.add(car.lineage);
+  }
+  return lines.size;
 }
 
 export class HealthStrip {

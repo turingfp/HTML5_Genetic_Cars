@@ -89,7 +89,8 @@ export function generateTrackFromSpec(input: TrackSpec): TrackDef {
   let y = TRACK_START_Y;
   let minY = y;
   let maxY = y;
-  let previousWasGap = false;
+  // Far enough back that the first tile counts as having solid ground behind it.
+  let tilesSinceGap = 99;
 
   for (let k = 0; k < tileCount; k++) {
     // Tilt is uniform in [-1.5, 1.5), scaled by how far along the track we are,
@@ -100,10 +101,14 @@ export function generateTrackFromSpec(input: TrackSpec): TrackDef {
     const rampRoll = features();
     const gapRoll = features();
     const ramp = openGround && rampRoll < spec.ramps;
-    // Never two gaps in a row: one is a jump, two is a wall with extra steps.
-    // A ramp and a gap on the same tile would also be a ramp into nothing.
-    const solid: boolean = !(openGround && !ramp && !previousWasGap && gapRoll < spec.gaps);
-    previousWasGap = !solid;
+    // At least two solid tiles between gaps. One gap is a jump and two in a
+    // row is a wall with extra steps, but the subtler failure was a single
+    // 1.5m tile left standing between two holes: barely enough road to land
+    // on, and from the camera it read as a floating sliver of broken
+    // geometry rather than as terrain. A ramp and a gap on the same tile
+    // would also be a ramp into nothing.
+    const solid: boolean = !(openGround && !ramp && tilesSinceGap >= 2 && gapRoll < spec.gaps);
+    tilesSinceGap = solid ? tilesSinceGap + 1 : 0;
 
     const angle = Math.max(-MAX_TILE_TILT, Math.min(MAX_TILE_TILT, ramp ? raw + RAMP_TILT : raw));
     const cos = Math.cos(angle);

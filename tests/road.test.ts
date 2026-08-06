@@ -46,8 +46,9 @@ describe('road geometry', () => {
     const { track, position } = positionsOf('ribbon');
     expect(track.joints).toHaveLength(TRACK_TILE_COUNT + 1);
     // One cross-section per joint (one more than there are tiles), three
-    // strips of two vertices each.
-    expect(position.count).toBe((TRACK_TILE_COUNT + 1) * 6);
+    // strips of two vertices each, plus the two end caps that close the
+    // ribbon at the start line and the end of the course, four corners each.
+    expect(position.count).toBe((TRACK_TILE_COUNT + 1) * 6 + 8);
 
     // The top strip's paired vertices should span the full road width.
     const sections = TRACK_TILE_COUNT + 1;

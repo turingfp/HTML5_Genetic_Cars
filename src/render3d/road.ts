@@ -147,8 +147,7 @@ export function buildRoadGeometry(track: Track3D): BufferGeometry {
   const indices: number[] = [];
   for (let i = 0; i + 1 < count; i++) {
     // Segment i spans tile i. Emitting no faces for a gap tile is what makes
-    // the hole visible; the vertices stay put and cost nothing, and both
-    // neighbouring segments keep their own end caps.
+    // the hole visible; the vertices stay put and cost nothing.
     if (!track.profile.tiles[i]?.solid) continue;
     const t = TOP + i * 2;
     const tn = TOP + (i + 1) * 2;
@@ -164,10 +163,77 @@ export function buildRoadGeometry(track: Track3D): BufferGeometry {
     indices.push(r, r + 1, rn, r + 1, rn + 1, rn);
   }
 
+  // End caps, closing the ribbon wherever it stops: both sides of every gap,
+  // the start line, and the end of the course. The road is a hollow shell of
+  // top and skirts, so without these a gap was a view straight into
+  // backface-culled nothing, and holes that are part of the track design read
+  // as the renderer glitching. A capped cut shows the road's thickness, which
+  // is what makes a hole look cut on purpose.
+  const capPositions: number[] = [];
+  const capNormals: number[] = [];
+  const capUvs: number[] = [];
+  const solidAt = (tile: number) => track.profile.tiles[tile]?.solid === true;
+
+  const emitCap = (at: number, facingForward: boolean) => {
+    const sHere = sections[at]!;
+    // The outward direction is away from the road the cap closes: taking the
+    // neighbour on the solid side, here-minus-neighbour points out of the cut
+    // for both orientations. (A sign flip here once sent the start-line cap's
+    // normal back into the road, which lit it as if facing the other way.)
+    const other = sections[facingForward ? at - 1 : at + 1] ?? sHere;
+    let fx = sHere.left[0] - other.left[0];
+    let fy = sHere.left[1] - other.left[1];
+    let fz = sHere.left[2] - other.left[2];
+    const flen = Math.hypot(fx, fy, fz) || 1;
+    fx /= flen;
+    fy /= flen;
+    fz /= flen;
+
+    const corners: Vec3[] = [
+      sHere.left,
+      sHere.right,
+      [
+        sHere.right[0] - sHere.up[0] * SKIRT,
+        sHere.right[1] - sHere.up[1] * SKIRT,
+        sHere.right[2] - sHere.up[2] * SKIRT,
+      ],
+      [
+        sHere.left[0] - sHere.up[0] * SKIRT,
+        sHere.left[1] - sHere.up[1] * SKIRT,
+        sHere.left[2] - sHere.up[2] * SKIRT,
+      ],
+    ];
+    const base = vertexCount + capPositions.length / 3;
+    for (const corner of corners) {
+      capPositions.push(corner[0], corner[1], corner[2]);
+      capNormals.push(fx, fy, fz);
+      capUvs.push(0, 0);
+    }
+    // Wound so the face looks along its normal, out of the cut.
+    if (facingForward) indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    else indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  };
+
+  for (let i = 0; i < count; i++) {
+    const before = i > 0 && solidAt(i - 1);
+    const after = i < count - 1 && solidAt(i);
+    if (before && !after) emitCap(i, true);
+    if (!before && after) emitCap(i, false);
+  }
+
   const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
-  geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+  const allPositions = new Float32Array(vertexCount * 3 + capPositions.length);
+  allPositions.set(positions);
+  allPositions.set(capPositions, vertexCount * 3);
+  const allNormals = new Float32Array(vertexCount * 3 + capNormals.length);
+  allNormals.set(normals);
+  allNormals.set(capNormals, vertexCount * 3);
+  const allUvs = new Float32Array(vertexCount * 2 + capUvs.length);
+  allUvs.set(uvs);
+  allUvs.set(capUvs, vertexCount * 2);
+  geometry.setAttribute('position', new BufferAttribute(allPositions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(allNormals, 3));
+  geometry.setAttribute('uv', new BufferAttribute(allUvs, 2));
   geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;

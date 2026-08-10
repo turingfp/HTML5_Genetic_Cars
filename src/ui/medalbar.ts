@@ -56,7 +56,7 @@ export class MedalBar {
     if (medal !== this.earned) {
       this.earned = medal;
       const colour = MEDALS.find((m) => m.name === medal)?.colour;
-      this.fill.style.background = colour ?? '#38bdf8';
+      this.fill.style.background = colour ?? '#bf3b1b';
       this.host.dataset['medal'] = medal ?? '';
     }
 

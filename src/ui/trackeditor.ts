@@ -322,8 +322,8 @@ export class TrackEditor {
     const sy = (y: number) => height - pad - ((y - track.minY) / spanY) * (height - pad * 2);
 
     // Ground, one solid run at a time, so gaps read as holes here too.
-    ctx.fillStyle = '#16243c';
-    ctx.strokeStyle = '#7dd3fc';
+    ctx.fillStyle = 'rgba(33, 29, 22, 0.85)';
+    ctx.strokeStyle = '#bf3b1b';
     ctx.lineWidth = 1.25;
     forEachSolidRun(track, (from, to) => {
       ctx.beginPath();
@@ -342,7 +342,7 @@ export class TrackEditor {
     });
 
     // Ramps, marked so a rampy track is recognisable at a glance.
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = '#bf3b1b';
     for (let i = 0; i < track.tiles.length; i++) {
       if (!track.tiles[i]!.ramp) continue;
       const point = track.surface[i]!;

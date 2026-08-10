@@ -84,7 +84,7 @@ export class GenePool {
       }
 
       if (car.isElite) {
-        ctx.fillStyle = 'rgba(253, 224, 71, 0.9)';
+        ctx.fillStyle = 'rgba(191, 59, 27, 0.9)';
         ctx.fillRect(0, y, Math.max(1.5 * dpr, cellWidth * 0.3), rowHeight);
       }
     }
@@ -96,11 +96,11 @@ function clamp(v: number): number {
   return v < -LIMIT ? -LIMIT : v > LIMIT ? LIMIT : v;
 }
 
-/** Red for negative, near-black at zero, green for positive. */
+/** Vermilion for negative, bare paper at zero, blue for positive. */
 function ramp(value: number, alpha: number): string {
   const t = Math.abs(value) / LIMIT;
   if (value >= 0) {
-    return `rgba(${Math.round(20 + 54 * t)}, ${Math.round(30 + 192 * t)}, ${Math.round(45 + 83 * t)}, ${alpha})`;
+    return `rgba(${Math.round(243 - 214 * t)}, ${Math.round(238 - 160 * t)}, ${Math.round(226 - 10 * t)}, ${alpha})`;
   }
-  return `rgba(${Math.round(20 + 228 * t)}, ${Math.round(30 + 83 * t)}, ${Math.round(45 + 68 * t)}, ${alpha})`;
+  return `rgba(${Math.round(243 - 52 * t)}, ${Math.round(238 - 179 * t)}, ${Math.round(226 - 199 * t)}, ${alpha})`;
 }

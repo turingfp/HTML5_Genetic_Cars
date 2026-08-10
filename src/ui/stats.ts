@@ -6,6 +6,8 @@
  * 60 times a second.
  */
 
+import { BLUE, SIGNAL } from '../render/palette';
+
 /**
  * The subset of a snapshot the readouts need, which both the flat and the 3D
  * simulations satisfy. Their snapshots differ only in how poses are shaped.
@@ -100,31 +102,31 @@ export class HealthStrip {
 
       ctx.textAlign = 'right';
       ctx.fillStyle = this.selected === i
-        ? '#fde047'
+        ? SIGNAL
         : car.alive
-          ? 'rgba(203,213,225,0.8)'
-          : 'rgba(100,116,139,0.55)';
+          ? 'rgba(33, 29, 22, 0.8)'
+          : 'rgba(33, 29, 22, 0.4)';
       ctx.fillText(String(i), labelWidth - 5 * dpr, midY);
 
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.12)';
+      ctx.fillStyle = 'rgba(33, 29, 22, 0.1)';
       ctx.fillRect(barLeft, y, barWidth, barHeight);
 
       if (car.alive) {
         const fill = Math.max(0, Math.min(1, car.health01));
-        ctx.fillStyle = isLeader ? '#fde047' : car.isElite ? '#60a5fa' : '#f87171';
+        ctx.fillStyle = isLeader ? SIGNAL : car.isElite ? BLUE : 'rgba(33, 29, 22, 0.55)';
         ctx.fillRect(barLeft, y, barWidth * fill, barHeight);
       }
 
       ctx.textAlign = 'right';
       ctx.fillStyle = isLeader
-        ? '#fde047'
+        ? SIGNAL
         : car.alive
-          ? 'rgba(203, 213, 225, 0.85)'
-          : 'rgba(100, 116, 139, 0.55)';
+          ? 'rgba(33, 29, 22, 0.85)'
+          : 'rgba(33, 29, 22, 0.4)';
       ctx.fillText(`${car.maxX.toFixed(1)}m`, w - 4 * dpr, midY);
 
       if (this.selected === i) {
-        ctx.strokeStyle = '#fde047';
+        ctx.strokeStyle = SIGNAL;
         ctx.lineWidth = dpr;
         ctx.strokeRect(barLeft + 0.5, y + 0.5, barWidth - 1, barHeight - 1);
       }

@@ -7,6 +7,7 @@
  * rate.
  */
 
+import { BLUE, PAPER_HIGH, SIGNAL } from './palette';
 import type { TrackDef } from '../sim/track';
 
 /** One car's position along the track, independent of how it is simulated. */
@@ -89,34 +90,34 @@ export class Minimap {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    ctx.fillStyle = '#0b1120';
+    ctx.fillStyle = PAPER_HIGH;
     ctx.fillRect(0, 0, width, height);
 
     this.exploredX = Math.max(this.exploredX, exploredX);
 
     // Unexplored track stays dim; the part cars have reached lights up.
-    ctx.fillStyle = 'rgba(51, 65, 85, 0.5)';
+    ctx.fillStyle = 'rgba(33, 29, 22, 0.22)';
     ctx.fill(this.profile!);
 
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, toX(this.exploredX), height);
     ctx.clip();
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.32)';
+    ctx.fillStyle = 'rgba(29, 78, 216, 0.14)';
     ctx.fill(this.profile!);
     ctx.restore();
 
     if (markers) {
       for (const marker of markers) {
         if (!marker.alive) continue;
-        ctx.fillStyle = marker.isLeader ? '#fde047' : marker.isElite ? '#93c5fd' : '#fca5a5';
+        ctx.fillStyle = marker.isLeader ? SIGNAL : marker.isElite ? BLUE : 'rgba(33, 29, 22, 0.5)';
         ctx.fillRect(toX(marker.x) - 1, 0, 2.5, height);
       }
     }
 
     // Viewport indicator.
     const viewLeft = toX(cameraX) - 12;
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.55)';
+    ctx.strokeStyle = 'rgba(33, 29, 22, 0.6)';
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.strokeRect(viewLeft, 1, 24, height - 2);

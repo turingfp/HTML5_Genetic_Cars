@@ -65,38 +65,38 @@ export interface CarStyle {
 }
 
 export const ELITE_STYLE: CarStyle = {
-  body: 'rgba(29, 78, 216, 0.15)',
-  stroke: '#1d4ed8',
-  spoke: 'rgba(29, 78, 216, 0.35)',
-  wheel: 'rgba(33, 29, 22, 0.1)',
-  wheelStroke: '#1d4ed8',
+  body: 'rgba(0, 200, 83, 0.14)',
+  stroke: '#00c853',
+  spoke: 'rgba(0, 200, 83, 0.32)',
+  wheel: 'rgba(232, 230, 225, 0.08)',
+  wheelStroke: '#00c853',
   alpha: 1,
 };
 
 export const NORMAL_STYLE: CarStyle = {
-  body: 'rgba(33, 29, 22, 0.07)',
-  stroke: 'rgba(33, 29, 22, 0.65)',
-  spoke: 'rgba(33, 29, 22, 0.22)',
-  wheel: 'rgba(33, 29, 22, 0.1)',
-  wheelStroke: 'rgba(33, 29, 22, 0.65)',
+  body: 'rgba(232, 230, 225, 0.08)',
+  stroke: 'rgba(232, 230, 225, 0.75)',
+  spoke: 'rgba(232, 230, 225, 0.22)',
+  wheel: 'rgba(232, 230, 225, 0.08)',
+  wheelStroke: 'rgba(232, 230, 225, 0.75)',
   alpha: 1,
 };
 
 export const LEADER_STYLE: CarStyle = {
-  body: 'rgba(191, 59, 27, 0.16)',
-  stroke: '#bf3b1b',
-  spoke: 'rgba(191, 59, 27, 0.35)',
-  wheel: 'rgba(33, 29, 22, 0.1)',
-  wheelStroke: '#bf3b1b',
+  body: 'rgba(176, 77, 240, 0.18)',
+  stroke: '#b04df0',
+  spoke: 'rgba(176, 77, 240, 0.35)',
+  wheel: 'rgba(232, 230, 225, 0.08)',
+  wheelStroke: '#b04df0',
   alpha: 1,
 };
 
 export const GHOST_STYLE: CarStyle = {
-  body: 'rgba(33, 29, 22, 0.04)',
-  stroke: 'rgba(33, 29, 22, 0.28)',
-  spoke: 'rgba(33, 29, 22, 0.1)',
-  wheel: 'rgba(33, 29, 22, 0.05)',
-  wheelStroke: 'rgba(33, 29, 22, 0.25)',
+  body: 'rgba(232, 230, 225, 0.04)',
+  stroke: 'rgba(232, 230, 225, 0.28)',
+  spoke: 'rgba(232, 230, 225, 0.1)',
+  wheel: 'rgba(232, 230, 225, 0.05)',
+  wheelStroke: 'rgba(232, 230, 225, 0.25)',
   alpha: 1,
 };
 
@@ -126,7 +126,7 @@ export function drawCar(
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     // Heavier wheels read as denser, darker discs.
-    ctx.fillStyle = `rgba(33, 29, 22, ${0.15 + art.wheelWeight[i]! * 0.45})`;
+    ctx.fillStyle = `rgba(232, 230, 225, ${0.12 + art.wheelWeight[i]! * 0.35})`;
     ctx.fill();
     ctx.lineWidth = hairline;
     ctx.strokeStyle = style.wheelStroke;

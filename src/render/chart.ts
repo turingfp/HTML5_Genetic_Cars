@@ -14,7 +14,7 @@
  * search is working even when the headline number is stuck.
  */
 
-import { BLUE, INK_DIM, INK_FAINT, PAPER_HIGH, RULE, SIGNAL, TEAL } from './palette';
+import { AMBER, FG_DIM, FG_FAINT, GREEN, PURPLE, RULE, SURFACE } from './palette';
 
 export interface GenerationStats {
   generation: number;
@@ -26,12 +26,12 @@ export interface GenerationStats {
 }
 
 /** Teal, matching nothing else on the chart: it is not a fitness line. */
-const QD_COLOR = TEAL;
+const QD_COLOR = AMBER;
 
 const SERIES = [
-  { key: 'best', color: SIGNAL, label: 'best' },
-  { key: 'eliteAverage', color: BLUE, label: 'top half' },
-  { key: 'average', color: 'rgba(33, 29, 22, 0.45)', label: 'average' },
+  { key: 'best', color: PURPLE, label: 'best' },
+  { key: 'eliteAverage', color: GREEN, label: 'top half' },
+  { key: 'average', color: 'rgba(232, 230, 225, 0.42)', label: 'average' },
 ] as const;
 
 /** Round up to a clean axis maximum such as 150, 400, 1000. */
@@ -67,7 +67,7 @@ export class Chart {
     const { ctx } = this;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = PAPER_HIGH;
+    ctx.fillStyle = SURFACE;
     ctx.fillRect(0, 0, w, h);
 
     const padLeft = 42 * dpr;
@@ -78,7 +78,7 @@ export class Chart {
     const plotH = h - padTop - padBottom;
 
     if (history.length === 0) {
-      ctx.fillStyle = INK_FAINT;
+      ctx.fillStyle = FG_FAINT;
       ctx.font = `${12 * dpr}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText('waiting for the first generation', w / 2, h / 2);
@@ -92,7 +92,7 @@ export class Chart {
     const toY = (value: number) => padTop + plotH - (value / maxValue) * plotH;
 
     ctx.strokeStyle = RULE;
-    ctx.fillStyle = INK_DIM;
+    ctx.fillStyle = FG_DIM;
     ctx.lineWidth = dpr;
     ctx.font = `${10 * dpr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
     ctx.textAlign = 'right';
@@ -157,7 +157,7 @@ export class Chart {
     for (const series of entries) {
       ctx.fillStyle = series.color;
       ctx.fillRect(legendX, padTop + 4 * dpr, 8 * dpr, 2.5 * dpr);
-      ctx.fillStyle = INK_DIM;
+      ctx.fillStyle = FG_DIM;
       ctx.fillText(series.label, legendX + 12 * dpr, padTop + 5 * dpr);
       legendX += ctx.measureText(series.label).width + 30 * dpr;
     }

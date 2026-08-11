@@ -15,6 +15,7 @@
     "bench": "vitest run --dir bench --include \"**/*.bench.ts\" --testTimeout 3600000"
   },
   "dependencies": {
+    "@fontsource/barlow-condensed": "^5.3.0",
     "box3d-wasm": "^0.2.0",
     "planck": "^1.5.0",
     "three": "^0.185.1",

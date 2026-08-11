@@ -1,52 +1,47 @@
-/* The lab journal.
+/* Race control.
 
-   This interface is a printed report on a living experiment: warm paper, ink
-   typography, hairline rules, numbered figures, and exactly two colours that
-   mean anything. Vermilion is the thing to watch: the leader, the action, the
-   number that just changed. Blue is the proven: elites, records, the archive.
-   Everything else is ink at some strength.
+   The interface is a pit-wall timing system. Near-black ground, square
+   corners, condensed uppercase labels, and the colour grammar every
+   motorsport timing screen already taught people: purple is the session
+   best, green is an improvement, white is current, grey is out. Amber is
+   chrome, not data: it marks the things you can press and the alerts that
+   want your eyes, and it never colours a result.
 
-   The one deliberate exception is the 3D world, which stays a dark plate set
-   into the page like a photograph tipped into a journal. It is not a figure,
-   it is the specimen, and the paper instruments are arranged around it. */
+   The world view is not a framed picture on this page; it is the feed the
+   whole wall exists to annotate, so it sits on the same black as everything
+   else with nothing but a hairline around it. */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  --paper: #f3eee2;
-  --paper-high: #faf7ee;
-  --paper-deep: #ebe4d2;
+  --ground: #0b0b0d;
+  --surface: #101013;
+  --surface-high: #16161a;
 
-  --ink: #211d16;
-  --ink-strong: rgba(33, 29, 22, 0.85);
-  --ink-dim: rgba(33, 29, 22, 0.62);
-  --ink-faint: rgba(33, 29, 22, 0.38);
-  --rule: rgba(33, 29, 22, 0.16);
-  --rule-strong: rgba(33, 29, 22, 0.75);
+  --fg: #e8e6e1;
+  --fg-strong: rgba(232, 230, 225, 0.87);
+  --fg-dim: rgba(232, 230, 225, 0.6);
+  --fg-faint: rgba(232, 230, 225, 0.35);
+  --rule: rgba(232, 230, 225, 0.13);
+  --rule-strong: rgba(232, 230, 225, 0.32);
 
-  --signal: #bf3b1b;
-  --signal-strong: #9c2f13;
-  --blue: #1d4ed8;
-  --good: #256d3b;
-  --warn: #9a6a08;
+  --purple: #b04df0;
+  --green: #00c853;
+  --amber: #ffb000;
+  --amber-deep: #cc8d00;
+  --red: #ff4545;
 
-  --plate: #0d1016;
-
-  --radius: 3px;
-  --radius-sm: 2px;
-
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
-    Georgia, "Times New Roman", serif;
+  --font-head: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
     "Liberation Mono", monospace;
 
   /* Kept under the old names so nothing downstream has to know the theme
-     turned inside out. */
-  --text: var(--ink);
-  --text-muted: var(--ink-dim);
-  --text-faint: var(--ink-faint);
+     changed hands. */
+  --text: var(--fg);
+  --text-muted: var(--fg-dim);
+  --text-faint: var(--fg-faint);
   --border: var(--rule);
-  --accent: var(--signal);
+  --accent: var(--amber);
 }
 
 * {
@@ -60,21 +55,21 @@ body {
 }
 
 body {
-  background:
-    linear-gradient(180deg, var(--paper-high) 0%, var(--paper) 220px),
-    var(--paper);
-  color: var(--ink);
-  font-family: var(--font-serif);
-  line-height: 1.55;
+  background: var(--ground);
+  color: var(--fg);
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(191, 59, 27, 0.2);
+  background: rgba(255, 176, 0, 0.3);
 }
 
 a {
-  color: var(--blue);
+  color: var(--amber);
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
 }
@@ -86,27 +81,27 @@ h3 {
 }
 
 h1 {
-  font-family: var(--font-serif);
-  font-size: 2.1rem;
+  font-family: var(--font-head);
+  font-size: 2.4rem;
   font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.05;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
 }
 
 h1 span {
-  color: var(--signal);
-  font-style: italic;
+  color: var(--amber);
 }
 
-/* Section titles are set like figure labels: small caps energy, monospace
-   discipline, a number so the page reads as a document with an order. */
+/* Section titles are set like the channel labels on a timing wall: condensed
+   caps, wide tracking, an amber tab so the eye can index the page. */
 h2,
 h3 {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-family: var(--font-head);
+  font-size: 0.92rem;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--ink);
+  letter-spacing: 0.14em;
+  color: var(--fg-strong);
   font-weight: 600;
 }
 
@@ -117,7 +112,7 @@ h3 {
   margin: 0 auto;
   padding: clamp(14px, 2vw, 30px);
   display: grid;
-  gap: 22px;
+  gap: 20px;
   grid-template-columns: minmax(0, 1fr) 336px;
   /* Row three takes the slack. The sidebar spans rows two and three, and with
      both rows auto its height got split between them, which shoved the main
@@ -129,7 +124,6 @@ h3 {
     "main   side"
     "about  about";
   align-items: start;
-  counter-reset: fig;
 }
 
 .app-header {
@@ -139,14 +133,14 @@ h3 {
   align-items: flex-end;
   gap: 18px;
   flex-wrap: wrap;
-  padding-bottom: 14px;
-  border-bottom: 4px double var(--rule-strong);
+  padding-bottom: 12px;
+  border-bottom: 3px solid var(--amber);
 }
 
 .column-main,
 .column-side {
   display: grid;
-  gap: 26px;
+  gap: 24px;
   align-content: start;
   min-width: 0;
 }
@@ -203,34 +197,29 @@ h3 {
   .map-panel { order: 7; }
   .hall-panel { order: 8; }
   .about-panel { order: 9; }
-
-  /* Figure numbers follow document order, which is no longer visual order
-     here, and out-of-order numbering reads as a mistake. Doubled selector so
-     this outweighs the numbering rule that appears later in the file. */
-  .app .panel > .panel-head h2::before,
-  .app .panel > h2::before {
-    content: none;
-  }
 }
 
 /* ── Surfaces ───────────────────────────────────────────────────────────── */
 
-/* Not cards. Sections of one document, each opened by a heavy rule, all
-   sitting on the same paper. */
+/* Not cards. Channels on one wall, each opened by a rule and an amber tab,
+   all sitting on the same black. */
 .panel {
   display: grid;
   gap: 10px;
-  border-top: 2px solid var(--rule-strong);
+  border-top: 1px solid var(--rule-strong);
   padding-top: 10px;
   min-width: 0;
 }
 
 .panel > .panel-head h2::before,
 .panel > h2::before {
-  counter-increment: fig;
-  content: "Fig. " counter(fig, decimal-leading-zero) " · ";
-  color: var(--signal);
-  letter-spacing: 0.08em;
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  background: var(--amber);
+  margin-right: 9px;
+  vertical-align: 0.18em;
 }
 
 .panel-head {
@@ -242,10 +231,10 @@ h3 {
 
 .panel-note {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--ink-faint);
+  color: var(--fg-faint);
   text-align: right;
 }
 
@@ -267,10 +256,10 @@ h3 {
 
 .tagline {
   margin: 0;
-  font-style: italic;
-  color: var(--ink-dim);
-  font-size: 0.95rem;
-  line-height: 1.45;
+  color: var(--fg-dim);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
 }
 
 .header-meta {
@@ -282,33 +271,28 @@ h3 {
 
 .seed-chip {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--ink-dim);
+  color: var(--fg-dim);
   border: 1px solid var(--rule);
   padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--paper-high);
+  background: var(--surface);
 }
 
 .seed-chip code {
-  color: var(--ink);
+  color: var(--fg);
   font-weight: 700;
   text-transform: none;
 }
 
 /* ── Stage ──────────────────────────────────────────────────────────────── */
 
-/* The specimen plate: the one dark object on the page, framed in ink with a
-   thin paper mat, like a photograph mounted in a report. */
+/* The live feed: same black as the page, one hairline, no frame. */
 .stage-view {
   position: relative;
-  border: 1px solid var(--ink);
-  outline: 4px solid var(--paper-high);
-  outline-offset: -5px;
-  background: var(--plate);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--rule-strong);
+  background: var(--ground);
   overflow: hidden;
 }
 
@@ -353,20 +337,21 @@ h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.86rem;
-  color: var(--ink-strong);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  color: var(--fg-strong);
   cursor: pointer;
 }
 
 .toggle input {
-  accent-color: var(--signal);
+  accent-color: var(--amber);
   margin: 0;
 }
 
 .toggle span {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--ink-faint);
+  font-size: 0.7rem;
+  color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
 }
 
@@ -375,13 +360,13 @@ h3 {
   display: none;
 }
 
-/* Instrument readouts pinned to the plate, set as paper labels stuck to the
-   photograph. */
+/* Timing chips pinned over the feed: black boxes, mono figures, the session
+   best in the purple every timing screen means it in. */
 .hud {
   position: absolute;
   inset: 10px 10px auto 10px;
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
   pointer-events: none;
 }
@@ -389,27 +374,32 @@ h3 {
 .hud-item {
   display: grid;
   gap: 0;
-  background: rgba(250, 247, 238, 0.94);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius-sm);
+  background: rgba(11, 11, 13, 0.88);
+  border: 1px solid var(--rule-strong);
+  border-top: 2px solid var(--fg-faint);
   padding: 4px 9px 5px;
 }
 
 .hud-label {
-  font-family: var(--font-mono);
-  font-size: 0.52rem;
+  font-family: var(--font-head);
+  font-size: 0.6rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--ink-faint);
+  color: var(--fg-faint);
 }
 
 .hud-value {
   font-family: var(--font-mono);
-  font-size: 0.92rem;
+  font-size: 0.94rem;
   font-weight: 700;
-  color: var(--ink);
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
+}
+
+.hud-value[data-readout="best"] {
+  color: var(--purple);
 }
 
 .stage-banner {
@@ -418,13 +408,13 @@ h3 {
   bottom: 12px;
   transform: translateX(-50%);
   max-width: min(92%, 60ch);
-  background: rgba(250, 247, 238, 0.96);
-  border: 1px solid var(--ink);
-  border-left: 3px solid var(--signal);
-  border-radius: var(--radius-sm);
+  background: rgba(11, 11, 13, 0.92);
+  border: 1px solid var(--rule-strong);
+  border-left: 3px solid var(--amber);
   padding: 7px 12px;
-  font-size: 0.85rem;
-  color: var(--ink);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: var(--fg);
   text-align: center;
 }
 
@@ -432,10 +422,9 @@ h3 {
 
 .segmented {
   display: inline-flex;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--rule-strong);
   overflow: hidden;
-  background: var(--paper-high);
+  background: var(--surface);
 }
 
 .segmented button {
@@ -451,32 +440,33 @@ h3 {
 }
 
 .segmented button:hover {
-  background: var(--paper-deep);
-  color: var(--ink);
+  background: var(--surface-high);
+  color: var(--fg);
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--paper-high);
+  background: var(--fg);
+  color: var(--ground);
 }
 
 button {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-family: var(--font-head);
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.1em;
   font-weight: 600;
-  color: var(--ink);
-  background: var(--paper-high);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius-sm);
-  padding: 7px 12px;
+  color: var(--fg-strong);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: 0;
+  padding: 7px 13px;
   cursor: pointer;
 }
 
 button:hover {
-  background: var(--ink);
-  color: var(--paper-high);
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--ground);
 }
 
 button:active {
@@ -486,40 +476,41 @@ button:active {
 button:focus-visible,
 input:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
 
 .primary-button {
-  background: var(--signal);
-  border-color: var(--signal-strong);
-  color: var(--paper-high);
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #101013;
 }
 
 .primary-button:hover {
-  background: var(--signal-strong);
-  color: var(--paper-high);
+  background: var(--amber-deep);
+  border-color: var(--amber-deep);
+  color: #101013;
 }
 
 .ghost-button {
   border-color: var(--rule);
-  color: var(--ink-dim);
+  color: var(--fg-dim);
   background: transparent;
 }
 
 .ghost-button:hover {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper-high);
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--ground);
 }
 
 .ghost-button.small {
   padding: 3px 8px;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
 }
 
 .secondary-button {
-  border-color: var(--ink);
+  border-color: var(--rule-strong);
 }
 
 .control {
@@ -529,11 +520,11 @@ summary:focus-visible {
 }
 
 .control label {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-family: var(--font-head);
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--ink-dim);
+  color: var(--fg-dim);
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -542,46 +533,47 @@ summary:focus-visible {
 
 .control output {
   font-family: var(--font-mono);
-  color: var(--ink);
+  font-size: 0.72rem;
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
 .hint {
   margin: 0;
-  font-size: 0.82rem;
-  font-style: italic;
-  line-height: 1.5;
-  color: var(--ink-dim);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  color: var(--fg-dim);
 }
 
 input[type="range"] {
   width: 100%;
   margin: 2px 0;
-  accent-color: var(--signal);
+  accent-color: var(--amber);
 }
 
 select {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--ink);
-  background: var(--paper-high);
+  font-size: 0.76rem;
+  color: var(--fg);
+  background: var(--surface);
   border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   padding: 7px 9px;
   width: 100%;
 }
 
 select:hover {
-  border-color: var(--ink);
+  border-color: var(--fg);
 }
 
 input[type="text"] {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: var(--ink);
-  background: var(--paper-high);
+  font-size: 0.78rem;
+  color: var(--fg);
+  background: var(--surface);
   border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   padding: 7px 9px;
   width: 100%;
   min-width: 0;
@@ -635,7 +627,7 @@ summary::after {
   content: "+";
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  color: var(--ink-faint);
+  color: var(--fg-faint);
   line-height: 1;
 }
 
@@ -644,7 +636,7 @@ details[open] > summary::after {
 }
 
 summary:hover h2 {
-  color: var(--signal);
+  color: var(--amber);
 }
 
 .details-body {
@@ -661,36 +653,32 @@ summary:hover h2 {
      maths in the strip divides this space evenly. */
   height: 248px;
   display: block;
-  background: var(--paper-high);
+  background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
 }
 
 #minimap {
   width: 100%;
   height: 88px;
   display: block;
-  background: var(--paper-high);
+  background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
 }
 
 #chart {
   width: 100%;
   height: 170px;
   display: block;
-  background: var(--paper-high);
+  background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
 }
 
 #brain {
   width: 100%;
   height: 240px;
   display: block;
-  background: var(--paper-high);
+  background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
 }
 
 .archive-body {
@@ -717,16 +705,17 @@ summary:hover h2 {
   font-family: var(--font-mono);
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--signal);
+  color: var(--amber);
   font-variant-numeric: tabular-nums;
 }
 
 .metric-label {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-family: var(--font-head);
+  font-size: 0.72rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+  color: var(--fg-faint);
 }
 
 .archive-preview[hidden] {
@@ -743,14 +732,13 @@ summary:hover h2 {
   align-items: center;
   gap: 2px;
   padding: 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--ink);
-  background: var(--paper-high);
-  box-shadow: 2px 2px 0 rgba(33, 29, 22, 0.25);
+  border: 1px solid var(--rule-strong);
+  border-top: 2px solid var(--amber);
+  background: rgba(11, 11, 13, 0.96);
   pointer-events: none;
   font-family: var(--font-mono);
   font-size: 0.62rem;
-  color: var(--ink-dim);
+  color: var(--fg-dim);
   white-space: nowrap;
 }
 
@@ -758,9 +746,8 @@ summary:hover h2 {
   width: 100%;
   aspect-ratio: 1;
   display: block;
-  border-radius: var(--radius-sm);
   border: 1px solid var(--rule);
-  background: var(--paper-high);
+  background: var(--surface);
 }
 
 @media (max-width: 640px) {
@@ -773,9 +760,8 @@ summary:hover h2 {
   width: 100%;
   height: 116px;
   display: block;
-  border-radius: var(--radius-sm);
   border: 1px solid var(--rule);
-  background: var(--paper-high);
+  background: var(--surface);
   image-rendering: pixelated;
 }
 
@@ -783,11 +769,12 @@ summary:hover h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-family: var(--font-head);
+  font-size: 0.72rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+  color: var(--fg-faint);
 }
 
 .legend span {
@@ -799,19 +786,18 @@ summary:hover h2 {
 .legend i {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
-  border: 1px solid var(--ink);
-  background: var(--paper-high);
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
 }
 
 .swatch-hidden {
-  background: var(--good);
-  border-color: var(--good);
+  background: var(--green);
+  border-color: var(--green);
 }
 
 .swatch-out {
-  background: var(--signal);
-  border-color: var(--signal);
+  background: var(--red);
+  border-color: var(--red);
 }
 
 .swatch-loop {
@@ -834,6 +820,7 @@ summary:hover h2 {
   counter-reset: rank;
 }
 
+/* Timing-tower rows: rank, machine, figure, hairline between entries. */
 .leaderboard-list li {
   display: flex;
   align-items: center;
@@ -847,7 +834,7 @@ summary:hover h2 {
   content: counter(rank, decimal-leading-zero);
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  color: var(--ink-faint);
+  color: var(--fg-faint);
   min-width: 1.6em;
 }
 
@@ -856,8 +843,7 @@ summary:hover h2 {
   height: 44px;
   flex: 0 0 auto;
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  background: var(--paper-high);
+  background: var(--surface);
 }
 
 .entry-text {
@@ -870,14 +856,14 @@ summary:hover h2 {
 .entry-text strong {
   font-family: var(--font-mono);
   font-size: 0.9rem;
-  color: var(--ink);
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
 .entry-text span {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
-  color: var(--ink-faint);
+  font-size: 0.64rem;
+  color: var(--fg-faint);
 }
 
 .entry-button {
@@ -886,9 +872,9 @@ summary:hover h2 {
 
 .empty {
   margin: 0;
-  font-style: italic;
-  color: var(--ink-faint);
-  font-size: 0.85rem;
+  color: var(--fg-faint);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
 }
 
 /* ── About ──────────────────────────────────────────────────────────────── */
@@ -900,13 +886,14 @@ summary:hover h2 {
 .about-body p {
   max-width: 76ch;
   margin: 0 0 12px;
-  font-size: 0.95rem;
-  color: var(--ink-strong);
+  font-size: 1rem;
+  letter-spacing: 0.015em;
+  color: var(--fg-strong);
 }
 
 .credits {
-  color: var(--ink-faint);
-  font-size: 0.82rem;
+  color: var(--fg-faint);
+  font-size: 0.85rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -922,16 +909,15 @@ summary:hover h2 {
   width: 100%;
   height: 64px;
   display: block;
-  background: var(--paper-high);
+  background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
 }
 
 .track-summary {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--ink-dim);
+  font-size: 0.66rem;
+  color: var(--fg-dim);
 }
 
 .field {
@@ -941,11 +927,11 @@ summary:hover h2 {
 }
 
 .field-label {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-family: var(--font-head);
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--ink-dim);
+  color: var(--fg-dim);
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -954,7 +940,8 @@ summary:hover h2 {
 
 .field-value {
   font-family: var(--font-mono);
-  color: var(--ink);
+  font-size: 0.72rem;
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -979,16 +966,14 @@ summary:hover h2 {
   position: relative;
   flex: 1;
   height: 5px;
-  border-radius: 3px;
-  background: rgba(250, 247, 238, 0.3);
+  background: rgba(232, 230, 225, 0.18);
   overflow: visible;
 }
 
 .medal-fill {
   height: 100%;
   width: 0;
-  border-radius: 3px;
-  background: var(--signal);
+  background: var(--amber);
   transition: width 0.25s ease-out;
 }
 
@@ -997,17 +982,15 @@ summary:hover h2 {
   top: -3px;
   width: 2px;
   height: 11px;
-  border-radius: 1px;
   opacity: 0.9;
 }
 
 .medal-caption {
   font-family: var(--font-mono);
   font-size: 0.62rem;
-  color: var(--ink);
-  background: rgba(250, 247, 238, 0.94);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: rgba(11, 11, 13, 0.9);
+  border: 1px solid var(--rule-strong);
   padding: 2px 7px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1024,29 +1007,29 @@ summary:hover h2 {
 .room-status {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--ink-dim);
+  color: var(--fg-dim);
 }
 
 .room-status[data-status='online'] {
-  color: var(--good);
+  color: var(--green);
 }
 
 .room-status[data-status='failed'] {
-  color: var(--signal);
+  color: var(--red);
 }
 
 .room-status[data-status='trouble'] {
-  color: var(--warn);
+  color: var(--amber);
 }
 
 .swarm-line {
   margin: 0;
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  color: var(--ink);
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1062,11 +1045,11 @@ summary:hover h2 {
   gap: 8px;
   padding: 4px 4px;
   border-bottom: 1px solid var(--rule);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 
 .peer-row.is-self {
-  background: rgba(29, 78, 216, 0.07);
+  background: rgba(255, 176, 0, 0.07);
 }
 
 .peer-medal {
@@ -1085,7 +1068,7 @@ summary:hover h2 {
   flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  color: var(--ink-dim);
+  color: var(--fg-dim);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1099,18 +1082,17 @@ summary:hover h2 {
   display: block;
   margin: 12px;
   padding: 14px 16px;
-  border: 1px solid #9c2f13;
-  border-left: 4px solid #9c2f13;
-  border-radius: 3px;
-  background: #faf7ee;
-  color: #211d16;
+  border: 1px solid #ff4545;
+  border-left: 4px solid #ff4545;
+  background: #101013;
+  color: #e8e6e1;
   font-size: 0.9rem;
   line-height: 1.5;
 }
 
 .fatal strong {
   display: block;
-  color: #9c2f13;
+  color: #ff4545;
   margin-bottom: 4px;
 }
 
@@ -1124,7 +1106,7 @@ summary:hover h2 {
 .fatal small {
   display: block;
   margin-top: 8px;
-  color: #211d16;
+  color: #e8e6e1;
   opacity: 0.65;
 }
 
@@ -1134,9 +1116,8 @@ summary:hover h2 {
   display: block;
   width: 100%;
   height: 210px;
-  background: var(--paper-high);
+  background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
   cursor: grab;
   /* The corners are dragged, so the browser must not steal the gesture for
      scrolling. */

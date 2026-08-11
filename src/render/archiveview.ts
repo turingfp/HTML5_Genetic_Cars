@@ -227,24 +227,23 @@ export class ArchiveView<T> {
         const x = px + col * cw;
         const y = (ARCHIVE_GRID - 1 - row) * ch;
         if (!cell) {
-          ctx.fillStyle = 'rgba(33, 29, 22, 0.05)';
+          ctx.fillStyle = 'rgba(232, 230, 225, 0.05)';
           ctx.fillRect(x + 0.5 * dpr, y + 0.5 * dpr, cw - dpr, ch - dpr);
           continue;
         }
-        // Pale parchment for weak niches through to deep vermilion for the
-        // champion's, scaled to the archive's own best so the map stays
-        // readable while scores grow: printed heat, not screen glow.
+        // Timing-purple heat: dead grey for weak niches through to full
+        // session-best purple for the champion's, scaled to the archive's own
+        // best so the map stays readable while scores grow.
         const value = Math.max(0, Math.min(1, cell.score / best));
-        const hue = 44 - value * 27;
-        const sat = 30 + value * 45;
-        const light = 86 - value * 40;
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+        const sat = 8 + value * 72;
+        const light = 16 + value * 42;
+        ctx.fillStyle = `hsl(276, ${sat}%, ${light}%)`;
         ctx.fillRect(x + 0.5 * dpr, y + 0.5 * dpr, cw - dpr, ch - dpr);
 
         if (this.generation - cell.generation < FRESH_FOR) {
           // A ring on recent finds, so a session's progress reads at a glance:
           // early on the whole map rings, later only the frontier does.
-          ctx.strokeStyle = 'rgba(33, 29, 22, 0.9)';
+          ctx.strokeStyle = 'rgba(0, 200, 83, 0.9)';
           ctx.lineWidth = dpr;
           ctx.strokeRect(x + 1.5 * dpr, y + 1.5 * dpr, cw - 3 * dpr, ch - 3 * dpr);
         }
@@ -253,7 +252,7 @@ export class ArchiveView<T> {
 
     // The axes, labelled in the gutters. Without these the map is a texture;
     // with them it is a chart of body designs.
-    ctx.fillStyle = 'rgba(33, 29, 22, 0.6)';
+    ctx.fillStyle = 'rgba(232, 230, 225, 0.55)';
     ctx.font = `${10 * dpr}px ui-monospace, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

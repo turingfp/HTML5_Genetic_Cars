@@ -1,34 +1,37 @@
 /**
- * The interface's palette: ink on paper.
+ * The interface's palette: race control.
  *
- * The page is a lab journal, not a dashboard. Everything printed sits on warm
- * paper in near-black ink, data is drawn the way a journal draws figures, and
- * exactly two colours are allowed to mean something: vermilion for the thing
- * to watch (the leader, the signal, the action), blue for the proven (elites,
- * the archive's line). The 3D world is the one deliberate exception; it stays
- * a dark photographic plate set into the page, because it is not a figure, it
- * is the specimen.
+ * The page is a pit-wall timing system. Near-black ground, square corners,
+ * off-white figures, and the colour language every motorsport timing screen
+ * already taught people to read: purple is the session best, green is an
+ * improvement, white is current, grey is out. That grammar maps onto
+ * evolution exactly: the leader runs purple, elites run green because their
+ * worth is proven, the rest run white until they die grey.
  *
- * Every canvas renderer takes its colours from here, so the page cannot drift
- * into being three slightly different papers.
+ * Amber is chrome, not data: buttons, alerts, the thing you can press. It
+ * never appears inside a figure except to mark the QD-score, which is
+ * neither a car nor a fitness.
+ *
+ * Every canvas renderer takes its colours from here, so the panels cannot
+ * drift into three slightly different blacks.
  */
 
-export const PAPER = '#f3eee2';
-export const PAPER_HIGH = '#faf7ee';
+/** Canvas ground inside figures. The page behind them is a step darker. */
+export const SURFACE = '#101013';
 
-export const INK = '#211d16';
-export const INK_STRONG = 'rgba(33, 29, 22, 0.85)';
-export const INK_DIM = 'rgba(33, 29, 22, 0.6)';
-export const INK_FAINT = 'rgba(33, 29, 22, 0.35)';
-export const RULE = 'rgba(33, 29, 22, 0.14)';
+export const FG = '#e8e6e1';
+export const FG_STRONG = 'rgba(232, 230, 225, 0.87)';
+export const FG_DIM = 'rgba(232, 230, 225, 0.6)';
+export const FG_FAINT = 'rgba(232, 230, 225, 0.35)';
+export const RULE = 'rgba(232, 230, 225, 0.13)';
 
-/** Vermilion: the leader, the action, the thing that changed. */
-export const SIGNAL = '#bf3b1b';
-/** Blue: elites, and anything whose worth is already proven. */
-export const BLUE = '#1d4ed8';
-/** Teal: the QD-score, which is neither a car nor a fitness. */
-export const TEAL = '#0f766e';
+/** Session best: the leader, the record, the fastest anything has ever been. */
+export const PURPLE = '#b04df0';
+/** Improvement: elites, personal bests, a niche that just got better. */
+export const GREEN = '#00c853';
+/** Chrome and alerts. The QD-score line borrows it, being neither car nor fitness. */
+export const AMBER = '#ffb000';
 
-/** Signed quantities in figures: green pushes, vermilion holds back. */
-export const POSITIVE_RGB = [37, 109, 59] as const;
-export const NEGATIVE_RGB = [191, 59, 27] as const;
+/** Signed quantities in figures: throttle green, brake red. */
+export const POSITIVE_RGB = [0, 200, 83] as const;
+export const NEGATIVE_RGB = [255, 69, 58] as const;

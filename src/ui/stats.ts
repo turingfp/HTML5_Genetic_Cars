@@ -6,7 +6,7 @@
  * 60 times a second.
  */
 
-import { BLUE, SIGNAL } from '../render/palette';
+import { GREEN, PURPLE } from '../render/palette';
 
 /**
  * The subset of a snapshot the readouts need, which both the flat and the 3D
@@ -102,31 +102,31 @@ export class HealthStrip {
 
       ctx.textAlign = 'right';
       ctx.fillStyle = this.selected === i
-        ? SIGNAL
+        ? PURPLE
         : car.alive
-          ? 'rgba(33, 29, 22, 0.8)'
-          : 'rgba(33, 29, 22, 0.4)';
+          ? 'rgba(232, 230, 225, 0.8)'
+          : 'rgba(232, 230, 225, 0.38)';
       ctx.fillText(String(i), labelWidth - 5 * dpr, midY);
 
-      ctx.fillStyle = 'rgba(33, 29, 22, 0.1)';
+      ctx.fillStyle = 'rgba(232, 230, 225, 0.09)';
       ctx.fillRect(barLeft, y, barWidth, barHeight);
 
       if (car.alive) {
         const fill = Math.max(0, Math.min(1, car.health01));
-        ctx.fillStyle = isLeader ? SIGNAL : car.isElite ? BLUE : 'rgba(33, 29, 22, 0.55)';
+        ctx.fillStyle = isLeader ? PURPLE : car.isElite ? GREEN : 'rgba(232, 230, 225, 0.6)';
         ctx.fillRect(barLeft, y, barWidth * fill, barHeight);
       }
 
       ctx.textAlign = 'right';
       ctx.fillStyle = isLeader
-        ? SIGNAL
+        ? PURPLE
         : car.alive
-          ? 'rgba(33, 29, 22, 0.85)'
-          : 'rgba(33, 29, 22, 0.4)';
+          ? 'rgba(232, 230, 225, 0.85)'
+          : 'rgba(232, 230, 225, 0.38)';
       ctx.fillText(`${car.maxX.toFixed(1)}m`, w - 4 * dpr, midY);
 
       if (this.selected === i) {
-        ctx.strokeStyle = SIGNAL;
+        ctx.strokeStyle = PURPLE;
         ctx.lineWidth = dpr;
         ctx.strokeRect(barLeft + 0.5, y + 0.5, barWidth - 1, barHeight - 1);
       }

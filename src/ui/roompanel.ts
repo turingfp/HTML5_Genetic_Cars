@@ -180,7 +180,7 @@ export class RoomPanel {
     medal.className = 'peer-medal';
     if (entry.medal) {
       medal.textContent = '●';
-      medal.style.color = MEDAL_COLOUR.get(entry.medal) ?? 'rgba(33, 29, 22, 0.5)';
+      medal.style.color = MEDAL_COLOUR.get(entry.medal) ?? 'rgba(232, 230, 225, 0.5)';
       medal.title = `${entry.medal} medal`;
     } else {
       medal.textContent = '○';

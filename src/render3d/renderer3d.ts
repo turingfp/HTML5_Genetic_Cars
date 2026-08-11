@@ -45,13 +45,13 @@ import { Graveyard, type Death } from './graveyard';
 import { buildDistanceMarkers, buildRoadGeometry } from './road';
 import { Trails } from './trails';
 
-const ELITE_COLOR = 0x60a5fa;
-const NORMAL_COLOR = 0xf87171;
-const LEADER_COLOR = 0xfde047;
-/** Pale and cold, so the ghost reads as a memory rather than a rival. */
-const GHOST_COLOR = 0x93c5fd;
-/** Crates: warm and matte, so they read as cargo rather than as scenery. */
-const CRATE_COLOR = 0xb98a4f;
+const ELITE_COLOR = 0x00c853;
+const NORMAL_COLOR = 0xe8e6e1;
+const LEADER_COLOR = 0xb04df0;
+/** Grey and half-there, so the ghost reads as a memory rather than a rival. */
+const GHOST_COLOR = 0x8f8d86;
+/** Crates: the chrome amber, because an obstacle is a thing to watch. */
+const CRATE_COLOR = 0xd98e1f;
 
 /** Free every geometry and material hanging off a group, then empty it. */
 function disposeGroup(group: Group): void {
@@ -101,11 +101,11 @@ export class Renderer3D {
   colourByLineage = false;
 
   private readonly wheelMaterial = new MeshStandardMaterial({
-    color: 0x11161f,
+    color: 0x141416,
     roughness: 0.85,
     metalness: 0.05,
   });
-  private readonly hubMaterial = new MeshBasicMaterial({ color: 0xcbd5e1 });
+  private readonly hubMaterial = new MeshBasicMaterial({ color: 0xe8e6e1 });
 
   private controls: OrbitControls;
   /**
@@ -157,15 +157,15 @@ export class Renderer3D {
     this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new Scene();
-    this.scene.fog = new Fog(0x0b1120, 55, 200);
+    this.scene.fog = new Fog(0x0a0a0c, 55, 200);
     this.scene.add(this.buildSky());
 
     this.camera = new PerspectiveCamera(55, 1, 0.1, 600);
 
     this.scene.add(new AmbientLight(0xffffff, 0.25));
-    this.scene.add(new HemisphereLight(0x9ec9ff, 0x101a2e, 0.55));
+    this.scene.add(new HemisphereLight(0xcfd2d6, 0x141416, 0.55));
 
-    this.sun = new DirectionalLight(0xfff2d5, 2.4);
+    this.sun = new DirectionalLight(0xf2f4f8, 2.4);
     this.sun.position.set(-24, 40, 22);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
@@ -248,8 +248,8 @@ export class Renderer3D {
       side: BackSide,
       depthWrite: false,
       uniforms: {
-        top: { value: new Color(0x0a1122) },
-        bottom: { value: new Color(0x24466e) },
+        top: { value: new Color(0x060608) },
+        bottom: { value: new Color(0x1b1d22) },
       },
       vertexShader: `
         varying vec3 vWorld;
@@ -283,7 +283,7 @@ export class Renderer3D {
     }
 
     const material = new MeshStandardMaterial({
-      color: 0x62809c,
+      color: 0x3c3f45,
       roughness: 0.95,
       metalness: 0.02,
       // Tilt is clamped only just under a quarter turn, so two neighbouring
@@ -297,7 +297,7 @@ export class Renderer3D {
     // Bars every ten metres, so speed and distance are legible.
     const markers = new Mesh(
       buildDistanceMarkers(track),
-      new MeshBasicMaterial({ color: 0xe8f1ff, transparent: true, opacity: 0.55 }),
+      new MeshBasicMaterial({ color: 0xe8e6e1, transparent: true, opacity: 0.55 }),
     );
     markers.frustumCulled = false;
     mesh.add(markers);

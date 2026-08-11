@@ -9,9 +9,22 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { ROAD_HALF_WIDTH, TRACK_TILE_COUNT } from '../src/config';
-import { buildRoadGeometry } from '../src/render3d/road';
-import { generateTrack3D, roadCrossSections } from '../src/sim3d/track3d';
+import {
+  KERB_HEIGHT,
+  KERB_WIDTH,
+  MAX_ROAD_BANK,
+  ROAD_FRICTION,
+  ROAD_HALF_WIDTH,
+  TILE_WIDTH,
+  TRACK_TILE_COUNT,
+} from '../src/config';
+import { defaultSpec } from '../src/track/spec';
+import { buildKerbGeometry, buildRoadGeometry } from '../src/render3d/road';
+import {
+  generateTrack3D,
+  generateTrack3DFromSpec,
+  roadCrossSections,
+} from '../src/sim3d/track3d';
 
 function positionsOf(seed: string) {
   const track = generateTrack3D(seed);
@@ -181,5 +194,97 @@ describe('road geometry', () => {
       // Never a jump: the largest step is one tile plus a little banking twist.
       expect(step).toBeLessThan(4);
     }
+  });
+});
+
+/**
+ * The kerbs.
+ *
+ * A kerb exists in two places at once: a wedge of collision geometry built by
+ * `Simulation3D.buildKerb` and the striped ribbon drawn here. The road already
+ * learned once that a physical surface and a drawn one drifting apart makes
+ * cars strike seams that are not on screen, so these check the drawn wedge
+ * keeps to the same bounds the collider uses.
+ */
+describe('the kerbs', () => {
+  it('hugs the road edge and stands the height the collider does', () => {
+    const track = generateTrack3D('kerbs');
+    const geometry = buildKerbGeometry(track);
+    const position = geometry.getAttribute('position');
+    const sections = roadCrossSections(track);
+
+    // Every edge point of every cross-section, tagged with the frame it came
+    // from. A kerb runs along this line; a vertex far from all of it is a kerb
+    // drawn somewhere the collider is not.
+    const edges: { p: [number, number, number]; up: [number, number, number] }[] = [];
+    for (const s of sections) {
+      const up: [number, number, number] = [s.up[0], s.up[1], s.up[2]];
+      edges.push({ p: [s.left[0], s.left[1], s.left[2]], up });
+      edges.push({ p: [s.right[0], s.right[1], s.right[2]], up });
+    }
+
+    let furthest = 0;
+    for (let i = 0; i < position.count; i++) {
+      const px = position.getX(i);
+      const py = position.getY(i);
+      const pz = position.getZ(i);
+      let nearest = Infinity;
+      for (const e of edges) {
+        const d = Math.hypot(px - e.p[0], py - e.p[1], pz - e.p[2]);
+        if (d < nearest) nearest = d;
+      }
+      furthest = Math.max(furthest, nearest);
+    }
+
+    // Half a tile along the road, plus the wedge's own reach across and up.
+    expect(furthest).toBeLessThan(TILE_WIDTH / 2 + KERB_WIDTH + KERB_HEIGHT);
+  });
+
+  it('rises the height the collider rises, not a strip of lighter paint', () => {
+    // Measured on a road with no hills and no camber, where "up" is the y axis
+    // and the numbers can be checked exactly rather than through a tilted frame.
+    const spec = { ...defaultSpec('kerbflat'), tiles: 40, hills: 0, bank: 0, gaps: 0 };
+    const track = generateTrack3DFromSpec(spec);
+    const position = buildKerbGeometry(track).getAttribute('position');
+    const surfaceY = roadCrossSections(track)[0]!.left[1];
+
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (let i = 0; i < position.count; i++) {
+      lowest = Math.min(lowest, position.getY(i) - surfaceY);
+      highest = Math.max(highest, position.getY(i) - surfaceY);
+    }
+    expect(highest).toBeCloseTo(KERB_HEIGHT, 6);
+    // The base is sunk into the slab so the two hulls overlap at no seam.
+    expect(lowest).toBeLessThan(0);
+  });
+
+  it('draws one wedge per side of every solid tile, and none over a gap', () => {
+    const spec = { ...defaultSpec('kerbholes'), tiles: 300, gaps: 0.2 };
+    const track = generateTrack3DFromSpec(spec);
+    // The builder spans section k to k+1, so the last cross-section starts no
+    // tile of its own.
+    const spans = roadCrossSections(track).length - 1;
+    const solid = track.profile.tiles.slice(0, spans).filter((t) => t.solid).length;
+    expect(solid).toBeLessThan(spans);
+
+    const geometry = buildKerbGeometry(track);
+    // Two sides, two quads each, four vertices per quad.
+    expect(geometry.getAttribute('position').count).toBe(solid * 2 * 2 * 4);
+  });
+});
+
+/**
+ * The grip the 3D road offers against the pull its own camber applies.
+ *
+ * A car in this mode cannot steer, so if the banking can out-pull the grip
+ * there is no move that saves it and leaving the road stops being a mistake
+ * anyone made. This is the arithmetic that keeps a margin there; it fails if
+ * the bank is ever raised or the grip lowered past the point of no return.
+ */
+describe('camber against grip', () => {
+  it('leaves a real margin at the steepest bank', () => {
+    const needed = Math.tan(MAX_ROAD_BANK);
+    expect(needed).toBeLessThan(ROAD_FRICTION * 0.6);
   });
 });

@@ -15,6 +15,7 @@
 
 import { BufferAttribute, BufferGeometry } from 'three';
 
+import { KERB_HEIGHT, KERB_WIDTH } from '../config';
 import { roadCrossSections, type Track3D } from '../sim3d/track3d';
 
 type Vec3 = [number, number, number];
@@ -81,6 +82,96 @@ export function buildDistanceMarkers(track: Track3D): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
   geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/**
+ * The kerbs, striped like the real thing.
+ *
+ * These are not decoration: `Simulation3D.buildKerb` puts a matching wedge of
+ * collision geometry along both edges, and the whole reason the road is built
+ * from `roadCrossSections` is that what a car hits and what a person sees must
+ * come from one source. Stripes alternate per tile, which is what makes a kerb
+ * legible as a kerb rather than as a lip of lighter tarmac, and they also give
+ * the eye a second speed reference at the edge of vision.
+ */
+export function buildKerbGeometry(track: Track3D): BufferGeometry {
+  const sections = roadCrossSections(track);
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+
+  // Sunk into the slab by the same amount as the collider, so the two meet
+  // inside the road rather than at a coincident surface that would z-fight.
+  const SINK = 0.1;
+  const LIGHT: Vec3 = [0.91, 0.9, 0.88];
+  const DARK: Vec3 = [0.22, 0.23, 0.26];
+
+  const corner = (
+    s: (typeof sections)[number],
+    side: -1 | 1,
+    across: number,
+    up: number,
+  ): Vec3 => {
+    const edge = side < 0 ? s.left : s.right;
+    return [
+      edge[0] + s.across[0] * across + s.up[0] * up,
+      edge[1] + s.across[1] * across + s.up[1] * up,
+      edge[2] + s.across[2] * across + s.up[2] * up,
+    ];
+  };
+
+  const quad = (a: Vec3, b: Vec3, c: Vec3, d: Vec3, normal: Vec3, tint: Vec3): void => {
+    const base = positions.length / 3;
+    for (const p of [a, b, c, d]) {
+      positions.push(p[0], p[1], p[2]);
+      normals.push(normal[0], normal[1], normal[2]);
+      colors.push(tint[0], tint[1], tint[2]);
+    }
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+
+  for (let k = 0; k + 1 < sections.length; k++) {
+    // Gap tiles have no slab and so no kerb, exactly as in the physics.
+    if (!track.profile.tiles[k]?.solid) continue;
+    const a = sections[k]!;
+    const b = sections[k + 1]!;
+    const tint = k % 2 === 0 ? LIGHT : DARK;
+
+    for (const side of [-1, 1] as const) {
+      const inward = -side;
+      const aInner = corner(a, side, KERB_WIDTH * inward, -SINK);
+      const aTop = corner(a, side, 0, KERB_HEIGHT);
+      const bInner = corner(b, side, KERB_WIDTH * inward, -SINK);
+      const bTop = corner(b, side, 0, KERB_HEIGHT);
+      const aOuter = corner(a, side, 0, -SINK);
+      const bOuter = corner(b, side, 0, -SINK);
+
+      // The ramp a drifting car climbs. Its normal leans up and inboard.
+      const rampUp = KERB_WIDTH;
+      const rampAcross = (KERB_HEIGHT + SINK) * inward;
+      const rlen = Math.hypot(rampUp, rampAcross) || 1;
+      const rampNormal: Vec3 = [
+        (a.up[0] * rampUp + a.across[0] * rampAcross) / rlen,
+        (a.up[1] * rampUp + a.across[1] * rampAcross) / rlen,
+        (a.up[2] * rampUp + a.across[2] * rampAcross) / rlen,
+      ];
+      quad(aInner, bInner, bTop, aTop, rampNormal, tint);
+
+      // The outer face, seen from off the road and when the camera swings wide.
+      const outNormal: Vec3 = [a.across[0] * side, a.across[1] * side, a.across[2] * side];
+      quad(aOuter, aTop, bTop, bOuter, outNormal, tint);
+    }
+  }
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
   geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;

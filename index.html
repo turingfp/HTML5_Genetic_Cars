@@ -353,7 +353,9 @@
               BoxCar3D is a rebuild of it. Cars now run in three dimensions on Box3D, which is
               Erin Catto's newer engine and a direct descendant of the Box2D the original used. The
               road banks from side to side, so a car can roll off the edge instead of only ever
-              getting stuck. Every car carries a small neural network that actually drives it. And
+              getting stuck; kerbs along both edges give a drifting car something to climb first,
+              which is what keeps that ending a mistake rather than a certainty. Every car carries
+              a small neural network that actually drives it. And
               the body itself is far more variable: corners rotate as well as stretch, a car has
               two to four wheels rather than exactly two, and chassis density is a gene.
             </p>

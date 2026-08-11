@@ -16,14 +16,16 @@ import {
   DEFAULT_MUTATION_SIZE,
   DEFAULT_POPULATION_SIZE,
   GRAVITY_Y,
+  KERB_HEIGHT,
+  KERB_WIDTH,
   MAX_GENERATION_FRAMES,
   LEADER_AIR_LIMIT,
   PROGRESS_EPSILON,
   STALL_FRAMES,
   MAX_CAR_HEALTH,
+  ROAD_FRICTION,
   ROAD_THICKNESS,
   SUB_STEP_COUNT,
-  TILE_FRICTION,
   TIME_STEP,
 } from '../config';
 import { randomSeed, rngFromSeed, type Rng } from '../core/rng';
@@ -48,7 +50,9 @@ import {
   generateTrack3D,
   generateTrack3DFromSpec,
   roadCrossSections,
+  type RoadCrossSection,
   type Track3D,
+  type Vec3Tuple,
 } from './track3d';
 import { defaultSpec, type TrackSpec } from '../track/spec';
 import { Car3D } from './car3d';
@@ -232,9 +236,58 @@ export class Simulation3D {
       }
 
       const body = this.world.createBody({ type: 'static', position: center });
-      body.createHull({ points, friction: TILE_FRICTION });
+      body.createHull({ points, friction: ROAD_FRICTION });
       this.roadBodies.push(body);
+
+      this.buildKerb(a, b, -1);
+      this.buildKerb(a, b, 1);
     }
+  }
+
+  /**
+   * One kerb along one edge of one tile: a wedge lying on the road, flush on
+   * the inside and standing `KERB_HEIGHT` proud at the outside.
+   *
+   * `side` is -1 for the left edge and +1 for the right. The base is sunk
+   * slightly into the slab so the two hulls overlap rather than meeting at a
+   * seam a wheel could catch.
+   */
+  private buildKerb(a: RoadCrossSection, b: RoadCrossSection, side: -1 | 1): void {
+    const SINK = 0.1;
+    const points: { x: number; y: number; z: number }[] = [];
+    const center = { x: 0, y: 0, z: 0 };
+    const corners: Vec3Tuple[] = [];
+
+    for (const section of [a, b]) {
+      const edge = side < 0 ? section.left : section.right;
+      // Inward is toward the centreline, which `across` points at from the
+      // left edge and away from at the right.
+      const inward = -side;
+      for (const [alongAcross, alongUp] of [
+        [KERB_WIDTH * inward, -SINK],
+        [0, -SINK],
+        [0, KERB_HEIGHT],
+      ] as const) {
+        corners.push([
+          edge[0] + section.across[0] * alongAcross + section.up[0] * alongUp,
+          edge[1] + section.across[1] * alongAcross + section.up[1] * alongUp,
+          edge[2] + section.across[2] * alongAcross + section.up[2] * alongUp,
+        ]);
+      }
+    }
+
+    for (const c of corners) {
+      center.x += c[0] / corners.length;
+      center.y += c[1] / corners.length;
+      center.z += c[2] / corners.length;
+    }
+    for (const c of corners) {
+      points.push({ x: c[0] - center.x, y: c[1] - center.y, z: c[2] - center.z });
+    }
+
+    const body = this.world.createBody({ type: 'static', position: center });
+    body.createHull({ points, friction: ROAD_FRICTION });
+    this.roadBodies.push(body);
   }
 
   /** Capture the pose of every living car, for the ghost. */

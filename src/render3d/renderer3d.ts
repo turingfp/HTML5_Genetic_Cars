@@ -42,7 +42,7 @@ import { CRATE_HALF } from '../sim3d/debris';
 import type { World3DSnapshot } from '../sim3d/simulation3d';
 import type { Track3D } from '../sim3d/track3d';
 import { Graveyard, type Death } from './graveyard';
-import { buildDistanceMarkers, buildRoadGeometry } from './road';
+import { buildDistanceMarkers, buildKerbGeometry, buildRoadGeometry } from './road';
 import { Trails } from './trails';
 
 const ELITE_COLOR = 0x00c853;
@@ -277,8 +277,15 @@ export class Renderer3D {
   private buildRoad(track: Track3D): void {
     if (this.road) {
       this.scene.remove(this.road);
-      this.road.geometry.dispose();
-      (this.road.material as MeshStandardMaterial).dispose();
+      // Traverse: the markers and kerbs ride as children, and disposing only
+      // the parent left their buffers on the GPU every time the track changed.
+      this.road.traverse((node) => {
+        const mesh = node as Mesh;
+        mesh.geometry?.dispose?.();
+        const material = mesh.material;
+        if (Array.isArray(material)) for (const m of material) m.dispose();
+        else material?.dispose?.();
+      });
       this.road = null;
     }
 
@@ -301,6 +308,14 @@ export class Renderer3D {
     );
     markers.frustumCulled = false;
     mesh.add(markers);
+
+    // Striped kerbs, matching the wedges the simulation puts along both edges.
+    const kerbs = new Mesh(
+      buildKerbGeometry(track),
+      new MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.02 }),
+    );
+    kerbs.frustumCulled = false;
+    mesh.add(kerbs);
 
     this.scene.add(mesh);
     this.road = mesh;

@@ -1,3 +1,7 @@
+// The interface's typeface, self-hosted so the page needs no third party.
+import '@fontsource/barlow-condensed/400.css';
+import '@fontsource/barlow-condensed/600.css';
+import '@fontsource/barlow-condensed/700.css';
 import './style.css';
 import { App } from './app/app';
 

@@ -325,6 +325,42 @@ export const TOP_SCORE_COUNT = 10;
 export const ROAD_THICKNESS = 0.6;
 
 /**
+ * The kerb: a low ramp along each edge of the road, rising toward the outside.
+ *
+ * Cars cannot steer. That is a measured decision, not an oversight (see the
+ * note in `ga/brain.ts`), but it means lateral position is decided by the
+ * camber and the car's own shape, and on a road that banks harder the further
+ * you get, every car that survives long enough eventually slides off the side.
+ * Measured over three seeds and twenty generations, deaths by leaving the road
+ * sideways rose from 21% of the first generation to 71% of the twentieth: the
+ * better the search got, the more the ending was the same ending.
+ *
+ * A kerb answers that without handing the driver a steering wheel the numbers
+ * said to take away. Gentle drift now rides up a ramp that pushes back, so
+ * staying on comes down to the body you evolved; arrive fast and sideways and
+ * you still go over it, which is the failure worth watching.
+ */
+export const KERB_WIDTH = 0.55;
+export const KERB_HEIGHT = 0.22;
+
+/**
+ * Grip of the 3D road surface, kept apart from the flat mode's `TILE_FRICTION`.
+ *
+ * The two modes shared 0.5, and in 3D that number was quietly deciding the
+ * whole game. A road banked to `MAX_ROAD_BANK` pulls a car sideways with
+ * `g*sin(0.45)` = 0.43g while pressing it down with only `g*cos(0.45)` = 0.90g,
+ * so the grip needed to hold a line is 0.48 and the grip on offer was 0.5.
+ * Every car on a fully banked section was one bump from sliding, and since a
+ * car cannot steer, sliding is a one-way trip. That is not difficulty, it is a
+ * coin toss dressed as one.
+ *
+ * One is what rubber on dry asphalt actually does, and it leaves a real margin
+ * at full bank, so how long a car holds the road goes back to being about the
+ * car.
+ */
+export const ROAD_FRICTION = 1;
+
+/**
  * A crate's density, friction and bounce.
  *
  * Light enough that a decent car shoulders one aside rather than stopping, and

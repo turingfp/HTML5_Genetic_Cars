@@ -27,11 +27,11 @@ export interface GhostFrame {
 /** A style built from a family's hue, so a whole line reads as one colour. */
 function lineageStyle(lineage: number): CarStyle {
   return {
-    body: lineageColour(lineage, 70, 60, 0.45),
-    stroke: lineageColour(lineage, 80, 72),
-    spoke: lineageColour(lineage, 70, 70, 0.28),
-    wheel: '#1e293b',
-    wheelStroke: lineageColour(lineage, 80, 72),
+    body: lineageColour(lineage, 70, 58, 0.35),
+    stroke: lineageColour(lineage, 78, 66),
+    spoke: lineageColour(lineage, 70, 62, 0.28),
+    wheel: 'rgba(232, 230, 225, 0.1)',
+    wheelStroke: lineageColour(lineage, 78, 66),
     alpha: 1,
   };
 }
@@ -77,9 +77,9 @@ export class Renderer {
   private drawSky(): void {
     const { ctx, camera } = this;
     const gradient = ctx.createLinearGradient(0, 0, 0, camera.height);
-    gradient.addColorStop(0, '#0b1120');
-    gradient.addColorStop(0.55, '#15233c');
-    gradient.addColorStop(1, '#1e3a5f');
+    gradient.addColorStop(0, '#0d0d10');
+    gradient.addColorStop(0.55, '#121216');
+    gradient.addColorStop(1, '#1a1b20');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, camera.width, camera.height);
   }
@@ -129,8 +129,9 @@ export class Renderer {
     }
     if (runStart >= 0) closeRun(runStart, end);
 
-    // Clearly darker than the sky's lower stop, so the horizon always reads.
-    ctx.fillStyle = '#0c1526';
+    // The ground is solid asphalt, clearly denser than the night sky, so the
+    // horizon always reads.
+    ctx.fillStyle = '#212226';
     ctx.fill(ground);
 
     ctx.lineJoin = 'round';
@@ -139,12 +140,13 @@ export class Renderer {
     // A lighter crust just under the surface separates ground from sky at any
     // camera position, which a world-space gradient cannot do reliably.
     ctx.lineWidth = 0.34;
-    ctx.strokeStyle = '#33465f';
+    ctx.strokeStyle = 'rgba(232, 230, 225, 0.22)';
     ctx.stroke(surfaceLine);
 
-    // A bright surface line makes the terrain profile readable at any zoom.
+    // The painted edge line of the circuit: white, like the track limits it
+    // is. It keeps the terrain profile readable at any zoom.
     ctx.lineWidth = 2.5 / this.camera.zoom;
-    ctx.strokeStyle = '#7dd3fc';
+    ctx.strokeStyle = '#e8e6e1';
     ctx.stroke(surfaceLine);
   }
 
@@ -155,7 +157,7 @@ export class Renderer {
     const scale = 1 / camera.zoom;
 
     ctx.lineWidth = 1 / camera.zoom;
-    ctx.strokeStyle = 'rgba(125, 211, 252, 0.18)';
+    ctx.strokeStyle = 'rgba(232, 230, 225, 0.3)';
 
     for (let x = first; x <= maxX; x += spacing) {
       if (x <= 0) continue;
@@ -170,7 +172,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(x, groundY + 0.95);
       ctx.scale(scale, -scale);
-      ctx.fillStyle = 'rgba(148, 197, 252, 0.5)';
+      ctx.fillStyle = 'rgba(232, 230, 225, 0.5)';
       ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
       ctx.textAlign = 'center';
       ctx.fillText(`${x}m`, 0, 0);

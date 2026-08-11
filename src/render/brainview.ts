@@ -11,6 +11,7 @@
  * out of a sense it ignores fade to nothing over a few generations.
  */
 
+import { FG_DIM, FG_FAINT, FG_STRONG, NEGATIVE_RGB, POSITIVE_RGB } from './palette';
 import {
   BRAIN_HIDDEN,
   BRAIN_INPUTS,
@@ -33,8 +34,8 @@ export interface BrainViewCar {
   alive: boolean;
 }
 
-const POSITIVE = [74, 222, 128] as const;
-const NEGATIVE = [248, 113, 113] as const;
+const POSITIVE = POSITIVE_RGB;
+const NEGATIVE = NEGATIVE_RGB;
 
 export class BrainView {
   private canvas: HTMLCanvasElement;
@@ -62,7 +63,7 @@ export class BrainView {
     ctx.clearRect(0, 0, w, h);
 
     if (!car?.brain || !car.activations) {
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
+      ctx.fillStyle = FG_FAINT;
       ctx.font = `${11 * dpr}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -123,7 +124,7 @@ export class BrainView {
       const y = columnY(BRAIN_INPUTS, i);
       this.node(left, y, radius, (a[i] ?? 0) * dim);
       ctx.textAlign = 'right';
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+      ctx.fillStyle = FG_DIM;
       ctx.fillText(INPUT_LABELS[i] ?? '', left - radius - 5 * dpr, y);
     }
 
@@ -153,11 +154,11 @@ export class BrainView {
       const value = a[BRAIN_INPUTS + BRAIN_HIDDEN + o] ?? 0;
       this.node(right, y, radius * 1.25, value * dim);
       ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+      ctx.fillStyle = FG_DIM;
       ctx.fillText(OUTPUT_LABELS[o] ?? '', right + radius + 6 * dpr, y - 6 * dpr);
       // The number that actually reaches the motor, which is the only part of
       // this whole picture with a unit attached.
-      ctx.fillStyle = car.alive ? 'rgba(226, 232, 240, 0.95)' : 'rgba(148, 163, 184, 0.5)';
+      ctx.fillStyle = car.alive ? FG_STRONG : FG_FAINT;
       ctx.fillText(`${(motorMultiplier(value) * 100).toFixed(0)}%`, right + radius + 6 * dpr, y + 6 * dpr);
     }
   }
@@ -226,7 +227,7 @@ export class BrainView {
 
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(15, 23, 42, 0.9)`;
+    ctx.fillStyle = 'rgba(16, 16, 19, 0.95)';
     ctx.fill();
 
     if (magnitude > 0.01) {
@@ -238,7 +239,7 @@ export class BrainView {
 
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(148, 163, 184, ${0.25 + magnitude * 0.35})`;
+    ctx.strokeStyle = `rgba(232, 230, 225, ${0.28 + magnitude * 0.4})`;
     ctx.lineWidth = Math.max(1, radius * 0.12);
     ctx.stroke();
   }

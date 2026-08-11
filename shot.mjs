@@ -1,0 +1,12 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox','--use-gl=swiftshader','--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport: { width: 1440, height: 940 } });
+await p.goto('http://127.0.0.1:4173/');
+await p.waitForFunction(() => window.__gcars?.debug().ready === true, null, { timeout: 60000 });
+await p.click('#speeds button:last-child');
+await p.waitForTimeout(20000);
+await p.screenshot({ path: '/tmp/ui-top.png' });
+await p.evaluate(() => scrollTo(0, 900));
+await p.waitForTimeout(400);
+await p.screenshot({ path: '/tmp/ui-mid.png' });
+await b.close();

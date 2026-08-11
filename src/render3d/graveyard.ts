@@ -33,14 +33,14 @@ export interface Death {
 const MAX_MARKERS = 8000;
 
 /**
- * The newest generation burns yellow; older ones sink toward a dark, cold blue
- * that recedes into the road. Old markers were previously as vivid as new ones,
+ * The newest generation burns amber; older ones sink toward a dead grey that
+ * recedes into the asphalt. Old markers were previously as vivid as new ones,
  * so a long run turned into an undifferentiated field of colour instead of
  * showing where the search has actually reached.
  */
-const OLD = new Color(0x16233c);
-const MID = new Color(0x6d28d9);
-const NEW = new Color(0xfde047);
+const OLD = new Color(0x2c2c30);
+const MID = new Color(0x8a5a10);
+const NEW = new Color(0xffb000);
 
 export class Graveyard {
   readonly mesh: InstancedMesh;

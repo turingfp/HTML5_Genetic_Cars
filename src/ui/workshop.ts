@@ -375,7 +375,7 @@ export class Workshop {
     // The sector each corner is confined to, so the constraint is visible
     // rather than something you discover by pushing against it.
     ctx.lineWidth = 1 / scale;
-    ctx.strokeStyle = 'rgba(148,163,184,0.16)';
+    ctx.strokeStyle = 'rgba(232, 230, 225, 0.12)';
     for (let i = 0; i < CHASSIS_VERTEX_COUNT; i++) {
       const mid = i * SECTOR;
       for (const edge of [mid - HALF_SWING, mid + HALF_SWING]) {
@@ -390,10 +390,10 @@ export class Workshop {
     ctx.beginPath();
     this.def.vertices.forEach((v, i) => (i === 0 ? ctx.moveTo(v.x, v.y) : ctx.lineTo(v.x, v.y)));
     ctx.closePath();
-    ctx.fillStyle = 'rgba(56,189,248,0.22)';
+    ctx.fillStyle = 'rgba(255, 176, 0, 0.13)';
     ctx.fill();
     ctx.lineWidth = 2.5 / scale;
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#ffb000';
     ctx.stroke();
 
     // Wheels.
@@ -402,10 +402,10 @@ export class Workshop {
       const v = this.def.vertices[wheel.vertex]!;
       ctx.beginPath();
       ctx.arc(v.x, v.y, wheel.radius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(15,23,42,0.85)';
+      ctx.fillStyle = 'rgba(16, 16, 19, 0.92)';
       ctx.fill();
       ctx.lineWidth = 2 / scale;
-      ctx.strokeStyle = '#e2e8f0';
+      ctx.strokeStyle = '#e8e6e1';
       ctx.stroke();
     }
 
@@ -414,7 +414,7 @@ export class Workshop {
       const v = this.def.vertices[i]!;
       ctx.beginPath();
       ctx.arc(v.x, v.y, (i === this.dragging ? 9 : 6) / scale, 0, Math.PI * 2);
-      ctx.fillStyle = wheelAt.has(i) ? '#fde047' : '#7dd3fc';
+      ctx.fillStyle = wheelAt.has(i) ? '#ffb000' : '#e8e6e1';
       ctx.fill();
     }
 
